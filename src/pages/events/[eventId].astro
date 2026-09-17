@@ -1,6 +1,12 @@
 ---
 import { getCollection, render } from "astro:content";
+import Invite from "../../components/Invite.astro";
+import RsvpForm from "../../components/RsvpForm";
 import Layout from "../../layouts/Layout.astro";
+
+// This route uses the static-prerender pattern (getStaticPaths + Astro.props),
+// so it must opt into prerendering even though `output: "server"` is set.
+export const prerender = true;
 
 // 1. Generate paths for all matching static files at build time
 export async function getStaticPaths() {
@@ -18,25 +24,9 @@ const { Content } = await render(event);
 ---
 
 <Layout>
-	<div>
-		<p>You're invite to</p>
-		<h1>
-			{event.data.title}
-		</h1>
-		<h2>{event.data.subtitle}</h2>
-		<p>{event.data.date}</p>
-		<p>{event.data.time}</p>
-		<p>{event.data.location}</p>
-		<p>RSVP by {event.data.rsvp_by}</p>
-	</div>
-	<div>
-		<form method="POST" action=`/api/rsvp/${event.id}`>
-			<label>
-				Name:
-				<input type="text" name="name" required>
-			</label>
-			<button type="submit">Submit</button>
-		</form>
-	</div>
+	<Invite event={event} />
+
+	<RsvpForm eventId={event.id} client:load />
+
 	<Content />
 </Layout>

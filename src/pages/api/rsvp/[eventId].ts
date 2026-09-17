@@ -7,9 +7,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params }) => {
 	const eventId = params.eventId;
 	try {
-		const formData = await request.formData();
-
-		const data = Object.fromEntries(formData.entries());
+		const data = await request.json();
 		// Format data as a single NDJSON line
 		const ndjsonLine = JSON.stringify(data) + "\n";
 
