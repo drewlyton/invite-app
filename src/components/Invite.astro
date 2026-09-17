@@ -9,19 +9,55 @@ const { event } = Astro.props;
 const { title, subtitle, date, time, location, rsvp_by } = event.data;
 ---
 
-<article
-	class="mx-auto max-w-md rounded-2xl border border-stone-200 bg-stone-50 p-8 text-center shadow-sm"
+<section
+	class="flex min-h-screen flex-col items-center justify-center px-6 text-center"
 >
-	<p class="text-sm uppercase tracking-widest text-stone-500">You're invited to</p>
-	<h1 class="mt-2 text-3xl font-semibold text-stone-900">{title}</h1>
-	<h2 class="mt-1 text-lg text-stone-600">{subtitle}</h2>
+	<p class="text-xs uppercase tracking-widest text-stone-500 sm:text-sm">
+		You're invited to
+	</p>
+	<h1
+		class="mt-3 text-4xl font-semibold text-stone-900 sm:text-5xl md:text-6xl lg:text-7xl"
+	>
+		{title}
+	</h1>
+	<h2 class="mt-2 text-lg text-stone-600 sm:text-xl md:text-2xl">{subtitle}</h2>
 
-	<hr class="my-6 border-stone-200" />
+	<hr class="my-8 w-12 border-stone-300 sm:my-10" />
 
-	<div class="space-y-1 text-stone-700">
+	<div class="space-y-1 text-base text-stone-700 sm:text-lg md:text-xl">
 		<p>{date}</p>
 		<p>{time}</p>
 		<p>{location}</p>
-		<p class="pt-3 text-sm text-stone-500">RSVP by {rsvp_by}</p>
 	</div>
-</article>
+
+	<a
+		href="#rsvp"
+		class="mt-6 inline-flex items-center gap-2 text-stone-500 transition hover:text-stone-900 sm:mt-8"
+	>
+		<svg
+			class="h-4 w-4 motion-safe:animate-bounce-down"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<polyline points="6 9 12 15 18 9" />
+		</svg>
+		<span>RSVP by {rsvp_by}</span>
+		<svg
+			class="h-4 w-4 motion-safe:animate-bounce-down"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<polyline points="6 9 12 15 18 9" />
+		</svg>
+	</a>
+</section>

@@ -26,7 +26,9 @@ const { Content } = await render(event);
 <Layout>
 	<Invite event={event} />
 
-	<RsvpForm eventId={event.id} client:load />
+	<section id="rsvp" class="scroll-mt-6 px-6 py-12 sm:py-16">
+		<RsvpForm eventId={event.id} client:load />
+	</section>
 
 	<Content />
 </Layout>
