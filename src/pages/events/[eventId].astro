@@ -1,15 +1,15 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import { getCollection, render } from 'astro:content';
+import { getCollection, render } from "astro:content";
+import Layout from "../../layouts/Layout.astro";
 
 // 1. Generate paths for all matching static files at build time
 export async function getStaticPaths() {
-  const events = await getCollection('event');
-  
-  return events.map(event => ({
-    params: { eventId: event.id }, 
-    props: { event }, 
-  }));
+	const events = await getCollection("event");
+
+	return events.map((event) => ({
+		params: { eventId: event.id },
+		props: { event },
+	}));
 }
 
 const { event } = Astro.props;
@@ -17,29 +17,26 @@ const { event } = Astro.props;
 const { Content } = await render(event);
 ---
 
-
-
 <Layout>
-  <div>
-  <p>You're invite to</p>
-<h1>
-
-  {event.data.title}
-  </h1>
-  <h2>{event.data.subtitle}</h2>
-  <p>{event.data.date}</p>
-  <p>{event.data.time}</p>
-  <p>{event.data.location}</p>
-    <p>RSVP by {event.data.rsvp_by}</p>
-  </div>
-  <div>
-    <form method="POST" action=`/api/rsvp/${event.id}`>
-      <label>
-    Name:
-    <input type="text" name="name" required />
-  </label>
-      <button type="submit">Submit</button>
-    </form>
-  </div>
-<Content />
+	<div>
+		<p>You're invite to</p>
+		<h1>
+			{event.data.title}
+		</h1>
+		<h2>{event.data.subtitle}</h2>
+		<p>{event.data.date}</p>
+		<p>{event.data.time}</p>
+		<p>{event.data.location}</p>
+		<p>RSVP by {event.data.rsvp_by}</p>
+	</div>
+	<div>
+		<form method="POST" action=`/api/rsvp/${event.id}`>
+			<label>
+				Name:
+				<input type="text" name="name" required>
+			</label>
+			<button type="submit">Submit</button>
+		</form>
+	</div>
+	<Content />
 </Layout>
