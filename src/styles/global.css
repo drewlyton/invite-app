@@ -2,6 +2,12 @@
 
 @theme {
 	--animate-bounce-down: bounce-down 1.5s ease-in-out infinite;
+	--animate-twinkle: twinkle 4s ease-in-out infinite;
+
+	--font-heading: ui-sans-serif, system-ui, sans-serif;
+	--font-body: ui-sans-serif, system-ui, sans-serif;
+
+	--color-accent: #1c1917;
 }
 
 @keyframes bounce-down {
@@ -14,6 +20,20 @@
 	}
 }
 
+@keyframes twinkle {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
+}
+
 html {
 	scroll-behavior: smooth;
+}
+
+body {
+	font-family: var(--font-body);
 }

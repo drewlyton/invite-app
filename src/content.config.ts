@@ -11,6 +11,7 @@ const event = defineCollection({
 		time: z.string(),
 		location: z.string(),
 		rsvp_by: z.string(),
+		theme: z.string().optional(),
 	}),
 });
 

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import confetti from "canvas-confetti";
+import { User, Users, Minus, Plus } from "lucide-react";
 
 interface Props {
 	eventId: string;
@@ -39,6 +40,7 @@ export default function RsvpForm({ eventId }: Props) {
 	const [email, setEmail] = useState("");
 	const [partySize, setPartySize] = useState(1);
 	const [dietary, setDietary] = useState("");
+	const isJustMe = partySize === 1;
 	const [notes, setNotes] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [submitted, setSubmitted] = useState(false);
@@ -85,7 +87,7 @@ export default function RsvpForm({ eventId }: Props) {
 	const canSubmit = !submitting && name.trim().length > 0;
 
 	const inputClass =
-		"mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900 shadow-sm focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500 disabled:bg-stone-50 disabled:text-stone-400";
+		"mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900 shadow-sm focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 disabled:bg-stone-50 disabled:text-stone-400";
 
 	if (submitted) {
 		return (
@@ -108,7 +110,8 @@ export default function RsvpForm({ eventId }: Props) {
 	return (
 		<form
 			onSubmit={handleSubmit}
-			className="mx-auto mt-8 max-w-md space-y-5 rounded-2xl border border-stone-200 bg-white p-8 shadow-sm"
+			autoComplete="off"
+			className="space-y-5"
 		>
 			<h2 className="text-center text-xl font-semibold text-stone-900">
 				Will you be there?
@@ -148,6 +151,7 @@ export default function RsvpForm({ eventId }: Props) {
 				<input
 					id="rsvp-name"
 					type="text"
+					autoComplete="name"
 					required
 					value={name}
 					onChange={(e) => setName(e.target.value)}
@@ -156,78 +160,139 @@ export default function RsvpForm({ eventId }: Props) {
 				/>
 			</div>
 
-			{status === "going" && (
-				<>
-					<div>
-						<label htmlFor="rsvp-email" className="block text-sm text-stone-600">
-							Email
-						</label>
-						<input
-							id="rsvp-email"
-							type="email"
-							required
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							disabled={submitting}
-							className={inputClass}
-						/>
-					</div>
-
-					<div>
-						<div className="flex items-center justify-between text-sm text-stone-600">
-							<label htmlFor="rsvp-party">Party size</label>
-							<span className="font-semibold text-stone-900">{partySize}</span>
+			<div
+				className={`grid motion-safe:transition-[grid-template-rows] motion-safe:duration-300 motion-safe:ease-out ${
+					status === "going" ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+				}`}
+				aria-hidden={status !== "going"}
+			>
+				<div className="overflow-hidden">
+					<div className="space-y-5">
+						<div>
+							<label htmlFor="rsvp-email" className="block text-sm text-stone-600">
+								Email
+							</label>
+							<input
+								id="rsvp-email"
+								type="email"
+								autoComplete="email"
+								required
+								value={email}
+								onChange={(e) => setEmail(e.target.value)}
+								disabled={submitting}
+								className={inputClass}
+							/>
 						</div>
-						<input
-							id="rsvp-party"
-							type="range"
-							min={1}
-							max={10}
-							value={partySize}
-							onChange={(e) => setPartySize(Number(e.target.value))}
-							disabled={submitting}
-							className="mt-2 w-full accent-stone-700 disabled:opacity-50"
-						/>
-						<div className="flex justify-between text-xs text-stone-400">
-							<span>1</span>
-							<span>10</span>
+
+						<div>
+							<span className="block text-sm text-stone-600">Are you bringing anyone?</span>
+							<div className="mt-2 grid grid-cols-2 gap-2">
+								<button
+									type="button"
+									aria-pressed={isJustMe}
+									onClick={() => setPartySize(1)}
+									disabled={submitting}
+									className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-4 transition disabled:cursor-not-allowed disabled:opacity-50 ${
+										isJustMe
+											? "border-stone-900 text-stone-900"
+											: "border-stone-200 text-stone-500 hover:border-stone-400 hover:text-stone-700"
+									}`}
+								>
+									<span className="text-2xl font-semibold tabular-nums">1</span>
+									<div className="flex items-center gap-1.5">
+										<User className="h-5 w-5" aria-hidden="true" />
+										<span className="text-sm font-medium">Just me</span>
+									</div>
+								</button>
+
+								{isJustMe ? (
+									<button
+										type="button"
+										onClick={() => setPartySize(2)}
+										disabled={submitting}
+										className="flex flex-col items-center justify-center gap-1 rounded-xl border border-stone-200 p-4 text-stone-500 transition focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 hover:border-stone-400 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										<span className="text-2xl font-semibold tabular-nums opacity-60">
+											2
+										</span>
+										<div className="flex items-center gap-1.5">
+											<Users className="h-5 w-5" aria-hidden="true" />
+											<span className="text-sm font-medium">My crew</span>
+										</div>
+									</button>
+								) : (
+									<div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-stone-900 p-4 text-stone-900">
+										<div className="flex items-center gap-1">
+											<button
+												type="button"
+												onClick={() =>
+													setPartySize((p) => Math.max(2, p - 1))
+												}
+												disabled={submitting || partySize <= 2}
+												aria-label="Decrease party size"
+												className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 transition focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												<Minus className="h-4 w-4" aria-hidden="true" />
+											</button>
+											<span className="w-8 text-center text-2xl font-semibold tabular-nums">
+												{partySize}
+											</span>
+											<button
+												type="button"
+												onClick={() =>
+													setPartySize((p) => Math.min(10, p + 1))
+												}
+												disabled={submitting || partySize >= 10}
+												aria-label="Increase party size"
+												className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 transition focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+											>
+												<Plus className="h-4 w-4" aria-hidden="true" />
+											</button>
+										</div>
+										<div className="flex items-center gap-1.5">
+											<Users className="h-5 w-5" aria-hidden="true" />
+											<span className="text-sm font-medium">My crew</span>
+										</div>
+									</div>
+								)}
+							</div>
+						</div>
+
+						<div>
+							<label
+								htmlFor="rsvp-dietary"
+								className="block text-sm text-stone-600"
+							>
+								Dietary restrictions
+							</label>
+							<input
+								id="rsvp-dietary"
+								type="text"
+								value={dietary}
+								onChange={(e) => setDietary(e.target.value)}
+								disabled={submitting}
+								placeholder="Optional"
+								className={inputClass}
+							/>
+						</div>
+
+						<div>
+							<label htmlFor="rsvp-notes" className="block text-sm text-stone-600">
+								Notes
+							</label>
+							<textarea
+								id="rsvp-notes"
+								rows={3}
+								value={notes}
+								onChange={(e) => setNotes(e.target.value)}
+								disabled={submitting}
+								placeholder="Optional"
+								className={inputClass}
+							/>
 						</div>
 					</div>
-
-					<div>
-						<label
-							htmlFor="rsvp-dietary"
-							className="block text-sm text-stone-600"
-						>
-							Dietary restrictions
-						</label>
-						<input
-							id="rsvp-dietary"
-							type="text"
-							value={dietary}
-							onChange={(e) => setDietary(e.target.value)}
-							disabled={submitting}
-							placeholder="Optional"
-							className={inputClass}
-						/>
-					</div>
-
-					<div>
-						<label htmlFor="rsvp-notes" className="block text-sm text-stone-600">
-							Notes
-						</label>
-						<textarea
-							id="rsvp-notes"
-							rows={3}
-							value={notes}
-							onChange={(e) => setNotes(e.target.value)}
-							disabled={submitting}
-							placeholder="Optional"
-							className={inputClass}
-						/>
-					</div>
-				</>
-			)}
+				</div>
+			</div>
 
 			<button
 				type="submit"

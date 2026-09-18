@@ -3,6 +3,7 @@ import { getCollection, render } from "astro:content";
 import Invite from "../../components/Invite.astro";
 import RsvpForm from "../../components/RsvpForm";
 import Layout from "../../layouts/Layout.astro";
+import { resolveTheme } from "../../lib/themes";
 
 // This route uses the static-prerender pattern (getStaticPaths + Astro.props),
 // so it must opt into prerendering even though `output: "server"` is set.
@@ -20,15 +21,23 @@ export async function getStaticPaths() {
 
 const { event } = Astro.props;
 
+const theme = resolveTheme(event.data.theme);
+
+const themeStyle = `--font-heading: ${theme.fonts.heading}; --font-body: ${theme.fonts.body}; --color-accent: ${theme.accent};`;
+
 const { Content } = await render(event);
 ---
 
 <Layout>
-	<Invite event={event} />
+	<div style={themeStyle} data-theme={theme.id}>
+		<Invite event={event} theme={theme} />
 
-	<section id="rsvp" class="scroll-mt-6 px-6 py-12 sm:py-16">
-		<RsvpForm eventId={event.id} client:load />
-	</section>
+		<section id="rsvp" class="scroll-mt-6 px-6 py-12 sm:py-16">
+			<div class="mx-auto mt-8 max-w-md min-h-[640px]">
+				<RsvpForm eventId={event.id} client:load />
+			</div>
+		</section>
 
-	<Content />
+		<Content />
+	</div>
 </Layout>
