@@ -1,5 +1,15 @@
 ---
 import "../styles/global.css";
+
+interface Props {
+	pageTitle?: string;
+	ogTitle?: string;
+	ogDescription?: string;
+	ogImage?: string;
+}
+
+const { pageTitle, ogTitle, ogDescription, ogImage } = Astro.props;
+const title = pageTitle ? `${pageTitle} · Lyton Events` : "Lyton Events";
 ---
 
 <!doctype html>
@@ -16,7 +26,17 @@ import "../styles/global.css";
 			href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
 		>
 		<meta name="generator" content={Astro.generator}>
-		<title>Lyton Events</title>
+		<title>{title}</title>
+		{ogTitle && <meta property="og:title" content={ogTitle} />}
+		{ogDescription && <meta property="og:description" content={ogDescription} />}
+		{ogImage && <meta property="og:image" content={ogImage} />}
+		<meta property="og:type" content="website" />
+		<meta name="twitter:card" content="summary_large_image" />
+		{ogTitle && <meta name="twitter:title" content={ogTitle} />}
+		{ogDescription && (
+			<meta name="twitter:description" content={ogDescription} />
+		)}
+		{ogImage && <meta name="twitter:image" content={ogImage} />}
 	</head>
 	<body>
 		<slot />

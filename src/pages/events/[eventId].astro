@@ -28,11 +28,16 @@ const themeStyle = `--font-heading: ${theme.fonts.heading}; --font-body: ${theme
 const { Content } = await render(event);
 ---
 
-<Layout>
+<Layout
+	pageTitle={event.data.title}
+	ogTitle={`${event.data.title} — You're invited`}
+	ogDescription={`${event.data.subtitle} · ${event.data.date} · ${event.data.time}`}
+	ogImage={`/og/${event.id}.svg`}
+>
 	<div style={themeStyle} data-theme={theme.id}>
 		<Invite event={event} theme={theme} />
 
-		<section id="rsvp" class="scroll-mt-6 px-6 py-12 sm:py-16">
+		<section id="rsvp" class="scroll-mt-6 px-6 pt-2 pb-12 sm:pt-3 sm:pb-16">
 			<div class="mx-auto mt-8 max-w-md min-h-[640px]">
 				<RsvpForm eventId={event.id} client:load />
 			</div>
