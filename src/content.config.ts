@@ -12,6 +12,13 @@ const event = defineCollection({
 		location: z.string(),
 		rsvp_by: z.string(),
 		theme: z.string().optional(),
+		// ISO 8601 datetime WITH timezone offset, e.g.
+		// "2026-09-26T16:00:00-04:00". Required for the .ics calendar
+		// invite (the display `date`/`time` strings above are kept for
+		// human readability but aren't parseable).
+		start: z.string().optional(),
+		// ISO 8601 end time. If omitted, defaults to start + 3 hours.
+		end: z.string().optional(),
 	}),
 });
 
