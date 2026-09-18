@@ -1,4 +1,4 @@
-import nodemailer, { type Transporter } from "nodemailer";
+import { Resend } from "resend";
 import { buildIcsAttachment, type EventForIcs } from "./ics.js";
 
 export interface RsvpEmailInput {
@@ -11,32 +11,25 @@ export interface RsvpEmailInput {
 	notes?: string;
 }
 
-let cachedTransporter: Transporter | null = null;
+let cachedClient: Resend | null = null;
 
-function getTransporter(): Transporter {
-	if (cachedTransporter) return cachedTransporter;
-
-	const user = process.env.GMAIL_USER;
-	const pass = process.env.GMAIL_APP_PASSWORD;
-	if (!user || !pass) {
+function getClient(): Resend {
+	if (cachedClient) return cachedClient;
+	const apiKey = process.env.RESEND_API_KEY;
+	if (!apiKey) {
 		throw new Error(
-			"GMAIL_USER and GMAIL_APP_PASSWORD must be set to send RSVP emails. " +
+			"RESEND_API_KEY must be set to send RSVP emails. " +
 				"See .env.example for setup instructions.",
 		);
 	}
+	cachedClient = new Resend(apiKey);
+	return cachedClient;
+}
 
-	cachedTransporter = nodemailer.createTransport({
-		service: "gmail",
-		auth: { user, pass },
-		// Bound the time the background send can take. Without these,
-		// unreachable SMTP hosts can hang the connection indefinitely and
-		// leak resources.
-		connectionTimeout: 10_000, // 10s to establish TCP/TLS
-		greetingTimeout: 10_000, // 10s for server greeting
-		socketTimeout: 30_000, // 30s of inactivity
-		dnsTimeout: 5_000,
-	});
-	return cachedTransporter;
+function getFrom(): string {
+	const email = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
+	const name = process.env.RESEND_FROM_NAME ?? "Invites";
+	return `${name} <${email}>`;
 }
 
 /**
@@ -64,7 +57,9 @@ function buildHtml(input: RsvpEmailInput): string {
 	const safeNotes = notes ? esc(notes) : "";
 
 	const partyLine =
-		partySize === 1 ? "Just you" : `You + ${partySize - 1} guest${partySize - 1 === 1 ? "" : "s"}`;
+		partySize === 1
+			? "Just you"
+			: `You + ${partySize - 1} guest${partySize - 1 === 1 ? "" : "s"}`;
 
 	return `<!doctype html>
 <html>
@@ -105,7 +100,9 @@ function buildHtml(input: RsvpEmailInput): string {
 function buildText(input: RsvpEmailInput): string {
 	const { name, event, partySize, dietary, notes } = input;
 	const partyLine =
-		partySize === 1 ? "Just you" : `You + ${partySize - 1} guest${partySize - 1 === 1 ? "" : "s"}`;
+		partySize === 1
+			? "Just you"
+			: `You + ${partySize - 1} guest${partySize - 1 === 1 ? "" : "s"}`;
 
 	const lines = [
 		`Hi ${name},`,
@@ -128,41 +125,46 @@ function buildText(input: RsvpEmailInput): string {
 }
 
 /**
- * Send an RSVP confirmation email with an .ics attachment. Caller should
- * treat this as best-effort and not fail the RSVP request on error.
+ * Send an RSVP confirmation email with an .ics attachment via the Resend
+ * HTTPS API. Caller should treat this as best-effort and not fail the
+ * RSVP request on error.
  */
 export async function sendRsvpConfirmation(
 	input: RsvpEmailInput,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
 	try {
-		const fromAddress = process.env.GMAIL_USER;
-		const fromName = process.env.GMAIL_FROM_NAME ?? "Invites";
 		const ics = buildIcsAttachment(input.event, input.eventUrl);
 
+		// Resend expects attachment.content as a Buffer (it base64-encodes
+		// internally) or a base64 string.
 		const attachments = ics
 			? [
 					{
 						filename: ics.filename,
 						content: ics.content,
-						contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+						contentType: "text/calendar",
 					},
 				]
 			: [];
 
-		const transporter = getTransporter();
-		await transporter.sendMail({
-			from: `"${fromName}" <${fromAddress}>`,
+		const replyTo = process.env.RESEND_REPLY_TO;
+		const client = getClient();
+		const { error } = await client.emails.send({
+			from: getFrom(),
 			to: input.to,
-			replyTo: process.env.GMAIL_REPLY_TO ?? fromAddress,
+			replyTo: replyTo || undefined,
 			subject: `You're confirmed: ${input.event.title}`,
 			text: buildText(input),
 			html: buildHtml(input),
 			attachments,
-			// Headers improve deliverability and inbox placement.
 			headers: {
 				"X-Entity-Ref-ID": `${input.event.id}-${Date.now()}`,
 			},
 		});
+
+		if (error) {
+			return { ok: false, error: error.message };
+		}
 
 		return { ok: true };
 	} catch (err) {
