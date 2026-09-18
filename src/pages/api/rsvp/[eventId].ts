@@ -24,10 +24,10 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 		// Append the line to the file
 		fs.appendFileSync(filePath, ndjsonLine, "utf8");
 
-		// Best-effort confirmation email. We deliberately don't await this
-		// before the response *and* we don't propagate email errors to the
-		// RSVP response — the user already submitted successfully. Failures
-		// are logged so they can be retried manually if needed.
+		// Fire-and-forget confirmation email. We intentionally don't await
+		// it before the response — the user already submitted successfully,
+		// and a slow/unreachable SMTP host must never block the RSVP
+		// response. Failures are logged so they can be retried.
 		if (
 			data &&
 				typeof data === "object" &&
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 			const event = await getEntry("event", eventId as string);
 			if (event) {
 				const eventUrl = `${url.protocol}//${url.host}/events/${eventId}`;
-				const result = await sendRsvpConfirmation({
+				const send = sendRsvpConfirmation({
 					to: data.email,
 					name: data.name,
 					event: {
@@ -65,16 +65,23 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 						typeof data.notes === "string" && data.notes.trim()
 							? data.notes
 							: undefined,
+				}).then((result) => {
+					if (!result.ok) {
+						console.warn(
+							`[rsvp] confirmation email failed for ${data.email} (event=${eventId}): ${result.error}`,
+						);
+					} else {
+						console.log(
+							`[rsvp] confirmation email sent to ${data.email} (event=${eventId})`,
+						);
+					}
 				});
-				if (!result.ok) {
-					console.warn(
-						`[rsvp] confirmation email failed for ${data.email} (event=${eventId}): ${result.error}`,
-					);
-				} else {
-					console.log(
-						`[rsvp] confirmation email sent to ${data.email} (event=${eventId})`,
-					);
-				}
+				// Swallow any unhandled rejection from the background chain so
+				// it can't crash the process. The .then above already logs
+				// errors via the result.ok branch.
+				send.catch((err) => {
+					console.error(`[rsvp] unexpected email send error:`, err);
+				});
 			}
 		}
 

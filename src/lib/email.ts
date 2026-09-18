@@ -28,7 +28,13 @@ function getTransporter(): Transporter {
 	cachedTransporter = nodemailer.createTransport({
 		service: "gmail",
 		auth: { user, pass },
-		// Gmail caps attachments at 25MB; we're well under that.
+		// Bound the time the background send can take. Without these,
+		// unreachable SMTP hosts can hang the connection indefinitely and
+		// leak resources.
+		connectionTimeout: 10_000, // 10s to establish TCP/TLS
+		greetingTimeout: 10_000, // 10s for server greeting
+		socketTimeout: 30_000, // 30s of inactivity
+		dnsTimeout: 5_000,
 	});
 	return cachedTransporter;
 }
