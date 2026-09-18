@@ -19,14 +19,13 @@ export const { getStaticPaths, GET } = await OGImageRoute({
 		const accentRgb = hexToRgb(theme.accent);
 		const fgRgb = hexToRgb(theme.heroText);
 
-		const description = [
+		const lines = [
 			data.subtitle,
-			"",
 			`${data.date} · ${data.time}`,
 			data.location,
-			"",
 			`RSVP by ${data.rsvp_by}`,
-		].join("\n");
+		].filter((line): line is string => Boolean(line));
+		const description = [lines[0], "", ...lines.slice(1)].join("\n");
 
 		return {
 			title: data.title,

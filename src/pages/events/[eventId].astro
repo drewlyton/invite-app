@@ -31,7 +31,7 @@ const { Content } = await render(event);
 <Layout
 	pageTitle={event.data.title}
 	ogTitle={`${event.data.title} — You're invited`}
-	ogDescription={`${event.data.subtitle} · ${event.data.date} · ${event.data.time}`}
+	ogDescription={`${[event.data.subtitle, event.data.date, event.data.time].filter(Boolean).join(" · ")}`}
 	ogImage={`/og/${event.id}.png`}
 >
 	<div style={themeStyle} data-theme={theme.id}>

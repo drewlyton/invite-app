@@ -83,12 +83,14 @@ const titleStyle = theme.accentTextShadow
 	>
 		{title}
 	</h1>
+	{subtitle && (
 	<h2
 		class="mt-2 font-body text-2xl sm:text-2xl md:text-3xl"
 		style={`color: ${theme.heroText}; opacity: 0.85; ${theme.id === "game-night" || theme.id === "game-night-light" ? "margin-top: 2rem;" : ""}`}
 	>
 		{subtitle}
 	</h2>
+)}
 
 	<hr
 		class="my-8 w-12 sm:my-10"
@@ -240,39 +242,15 @@ const titleStyle = theme.accentTextShadow
 		39vw 94vh currentColor;
 }
 
-/* Balloon decorations: each layer is a small round bulb with a triangular
-	   tie and a thin string. Box-shadow copies scatter extra balloons around
-	   the viewport edges/corners, avoiding the center where the text sits. */
+/* Floating circle balloons: each layer is a small round bulb. Box-shadow
+	   copies scatter extra balloons around the viewport edges/corners,
+	   avoiding the center where the text sits. */
 .hero-balloons {
 	width: 30px;
 	height: 30px;
 	background: currentColor;
 	border-radius: 50%;
 	opacity: 0.7;
-}
-.hero-balloons::before {
-	content: "";
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	width: 0;
-	height: 0;
-	border-left: 5px solid transparent;
-	border-right: 5px solid transparent;
-	border-top: 8px solid currentColor;
-	transform: translateX(-50%);
-	opacity: 0.75;
-}
-.hero-balloons::after {
-	content: "";
-	position: absolute;
-	bottom: -32px;
-	left: 50%;
-	width: 1px;
-	height: 28px;
-	background: currentColor;
-	transform: translateX(-50%);
-	opacity: 0.45;
 }
 .hero-balloons-0 {
 	box-shadow:
