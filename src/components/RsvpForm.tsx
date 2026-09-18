@@ -73,7 +73,9 @@ export default function RsvpForm({ eventId }: Props) {
 			};
 			if (res.ok && data.success) {
 				setSubmitted(true);
-				fireConfetti();
+				if (status === "going") {
+					fireConfetti();
+				}
 			} else {
 				setError(data.error ?? "Something went wrong. Please try again.");
 			}
@@ -91,17 +93,19 @@ export default function RsvpForm({ eventId }: Props) {
 
 	if (submitted) {
 		return (
-			<div className="mx-auto mt-8 max-w-md rounded-2xl border border-stone-200 bg-stone-50 p-10 text-center shadow-sm">
-				<div className="text-5xl" aria-hidden="true">
-					🎉
-				</div>
+			<div className="mx-auto mt-8 max-w-md p-10 text-center">
+				{status === "going" && (
+					<div className="text-5xl" aria-hidden="true">
+						🎉
+					</div>
+				)}
 				<h2 className="mt-3 text-2xl font-semibold text-stone-900">
-					Thank you!
+					{status === "going" ? "Woot woot!" : "Bummer!"}
 				</h2>
 				<p className="mt-2 text-stone-600">
 					{status === "going"
-						? "Woot! We can't wait to see you there!"
-						: "Bummer! We'll miss you!"}
+						? "Can't wait to see you there!"
+						: "We'll miss you!"}
 				</p>
 			</div>
 		);
@@ -176,10 +180,10 @@ export default function RsvpForm({ eventId }: Props) {
 								id="rsvp-email"
 								type="email"
 								autoComplete="email"
-								required
+								required={status === "going"}
 								value={email}
 								onChange={(e) => setEmail(e.target.value)}
-								disabled={submitting}
+								disabled={submitting || status !== "going"}
 								className={inputClass}
 							/>
 						</div>
