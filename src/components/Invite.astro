@@ -31,18 +31,45 @@ const titleStyle = theme.accentTextShadow
 	class="hero relative isolate flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-6 text-center"
 	style={heroStyle}
 >
-	{
-		theme.stars && (
-			<>
-				<div class="hero-stars hero-stars-1-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: 0s" />
-				<div class="hero-stars hero-stars-1-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: -1s" />
-				<div class="hero-stars hero-stars-1-c pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: -2s" />
-				<div class="hero-stars hero-stars-1-d pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: -3s" />
-				<div class="hero-stars hero-stars-2-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: -0.5s" />
-				<div class="hero-stars hero-stars-2-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle" style="animation-delay: -2.5s" />
-			</>
-		)
-	}
+	{theme.stars && (
+	<>
+		<div
+			class="hero-stars hero-stars-1-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: 0s"
+		/>
+		<div
+			class="hero-stars hero-stars-1-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: -1s"
+		/>
+		<div
+			class="hero-stars hero-stars-1-c pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: -2s"
+		/>
+		<div
+			class="hero-stars hero-stars-1-d pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: -3s"
+		/>
+		<div
+			class="hero-stars hero-stars-2-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: -0.5s"
+		/>
+		<div
+			class="hero-stars hero-stars-2-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
+			style="animation-delay: -2.5s"
+		/>
+	</>
+)}
+
+	{theme.balloons && (
+	<>
+		{theme.balloons.colors.map((color, i) => (
+			<div
+				class={`hero-balloons hero-balloons-${i} pointer-events-none absolute inset-0 motion-safe:animate-balloon-float`}
+				style={`color: ${color}; animation-delay: ${-i * 1.1}s;`}
+			/>
+		))}
+	</>
+)}
 
 	<p
 		class="text-base uppercase tracking-widest opacity-70 sm:text-base"
@@ -66,7 +93,7 @@ const titleStyle = theme.accentTextShadow
 	<hr
 		class="my-8 w-12 sm:my-10"
 		style={`border-color: ${theme.accent}; opacity: 0.6;`}
-	/>
+	>
 
 	<div
 		class="space-y-3 font-body text-xl sm:text-xl md:text-2xl"
@@ -106,75 +133,214 @@ const titleStyle = theme.accentTextShadow
 </section>
 
 <style>
-	.hero-stars-1-a,
-	.hero-stars-1-b,
-	.hero-stars-1-c,
-	.hero-stars-1-d {
-		width: 4px;
-		height: 4px;
-		background: currentColor;
-	}
-	.hero-stars-2-a,
-	.hero-stars-2-b {
-		width: 2px;
-		height: 2px;
-		background: currentColor;
-		opacity: 0.85;
-	}
+.hero-stars-1-a,
+.hero-stars-1-b,
+.hero-stars-1-c,
+.hero-stars-1-d {
+	width: 4px;
+	height: 4px;
+	background: currentColor;
+}
+.hero-stars-2-a,
+.hero-stars-2-b {
+	width: 2px;
+	height: 2px;
+	background: currentColor;
+	opacity: 0.85;
+}
 
-	.hero-stars-1-a {
-		box-shadow:
-			5vw 6vh currentColor, 18vw 14vh currentColor,
-			32vw 11vh currentColor, 46vw 7vh currentColor,
-			60vw 3vh currentColor, 74vw 5vh currentColor,
-			88vw 9vh currentColor, 7vw 27vh currentColor,
-			22vw 29vh currentColor, 36vw 31vh currentColor,
-			50vw 35vh currentColor, 64vw 33vh currentColor;
-	}
-	.hero-stars-1-b {
-		box-shadow:
-			12vw 2vh currentColor, 25vw 4vh currentColor,
-			39vw 22vh currentColor, 53vw 17vh currentColor,
-			67vw 13vh currentColor, 81vw 15vh currentColor,
-			95vw 19vh currentColor, 15vw 34vh currentColor,
-			29vw 39vh currentColor, 43vw 41vh currentColor,
-			57vw 43vh currentColor, 71vw 45vh currentColor;
-	}
-	.hero-stars-1-c {
-		box-shadow:
-			78vw 37vh currentColor, 92vw 41vh currentColor,
-			3vw 57vh currentColor, 17vw 59vh currentColor,
-			31vw 61vh currentColor, 45vw 63vh currentColor,
-			59vw 65vh currentColor, 73vw 67vh currentColor,
-			87vw 69vh currentColor, 5vw 81vh currentColor,
-			20vw 83vh currentColor, 34vw 85vh currentColor;
-	}
-	.hero-stars-1-d {
-		box-shadow:
-			85vw 47vh currentColor, 10vw 64vh currentColor,
-			24vw 67vh currentColor, 38vw 69vh currentColor,
-			52vw 71vh currentColor, 66vw 73vh currentColor,
-			80vw 75vh currentColor, 12vw 87vh currentColor,
-			27vw 89vh currentColor, 41vw 91vh currentColor,
-			48vw 87vh currentColor, 55vw 93vh currentColor;
-	}
+.hero-stars-1-a {
+	box-shadow:
+		5vw 6vh currentColor,
+		18vw 14vh currentColor,
+		32vw 11vh currentColor,
+		46vw 7vh currentColor,
+		60vw 3vh currentColor,
+		74vw 5vh currentColor,
+		88vw 9vh currentColor,
+		7vw 27vh currentColor,
+		22vw 29vh currentColor,
+		36vw 31vh currentColor,
+		50vw 35vh currentColor,
+		64vw 33vh currentColor;
+}
+.hero-stars-1-b {
+	box-shadow:
+		12vw 2vh currentColor,
+		25vw 4vh currentColor,
+		39vw 22vh currentColor,
+		53vw 17vh currentColor,
+		67vw 13vh currentColor,
+		81vw 15vh currentColor,
+		95vw 19vh currentColor,
+		15vw 34vh currentColor,
+		29vw 39vh currentColor,
+		43vw 41vh currentColor,
+		57vw 43vh currentColor,
+		71vw 45vh currentColor;
+}
+.hero-stars-1-c {
+	box-shadow:
+		78vw 37vh currentColor,
+		92vw 41vh currentColor,
+		3vw 57vh currentColor,
+		17vw 59vh currentColor,
+		31vw 61vh currentColor,
+		45vw 63vh currentColor,
+		59vw 65vh currentColor,
+		73vw 67vh currentColor,
+		87vw 69vh currentColor,
+		5vw 81vh currentColor,
+		20vw 83vh currentColor,
+		34vw 85vh currentColor;
+}
+.hero-stars-1-d {
+	box-shadow:
+		85vw 47vh currentColor,
+		10vw 64vh currentColor,
+		24vw 67vh currentColor,
+		38vw 69vh currentColor,
+		52vw 71vh currentColor,
+		66vw 73vh currentColor,
+		80vw 75vh currentColor,
+		12vw 87vh currentColor,
+		27vw 89vh currentColor,
+		41vw 91vh currentColor,
+		48vw 87vh currentColor,
+		55vw 93vh currentColor;
+}
 
-	.hero-stars-2-a {
-		box-shadow:
-			9vw 10vh currentColor, 35vw 18vh currentColor,
-			63vw 22vh currentColor, 91vw 18vh currentColor,
-			27vw 44vh currentColor, 55vw 48vh currentColor,
-			83vw 52vh currentColor, 21vw 72vh currentColor,
-			49vw 76vh currentColor, 77vw 80vh currentColor,
-			15vw 90vh currentColor, 73vw 96vh currentColor;
+.hero-stars-2-a {
+	box-shadow:
+		9vw 10vh currentColor,
+		35vw 18vh currentColor,
+		63vw 22vh currentColor,
+		91vw 18vh currentColor,
+		27vw 44vh currentColor,
+		55vw 48vh currentColor,
+		83vw 52vh currentColor,
+		21vw 72vh currentColor,
+		49vw 76vh currentColor,
+		77vw 80vh currentColor,
+		15vw 90vh currentColor,
+		73vw 96vh currentColor;
+}
+.hero-stars-2-b {
+	box-shadow:
+		21vw 8vh currentColor,
+		49vw 12vh currentColor,
+		77vw 8vh currentColor,
+		13vw 38vh currentColor,
+		41vw 38vh currentColor,
+		69vw 42vh currentColor,
+		7vw 62vh currentColor,
+		35vw 66vh currentColor,
+		63vw 70vh currentColor,
+		91vw 74vh currentColor,
+		39vw 94vh currentColor;
+}
+
+/* Balloon decorations: each layer is a small colored shape with many
+	   box-shadow copies positioned around the viewport edges/corners. */
+.hero-balloons {
+	width: 28px;
+	height: 36px;
+	background: currentColor;
+	border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+	opacity: 0.7;
+}
+.hero-balloons::after {
+	content: "";
+	position: absolute;
+	bottom: -5px;
+	left: 50%;
+	width: 6px;
+	height: 6px;
+	background: currentColor;
+	border-radius: 50% 50% 50% 0;
+	transform: translateX(-50%) rotate(45deg);
+	opacity: 0.55;
+}
+
+.hero-balloons-0 {
+	box-shadow:
+		6vw 9vh currentColor,
+		22vw 6vh currentColor,
+		48vw 14vh currentColor,
+		74vw 8vh currentColor,
+		92vw 11vh currentColor,
+		8vw 38vh currentColor,
+		90vw 42vh currentColor,
+		14vw 84vh currentColor,
+		44vw 88vh currentColor,
+		70vw 90vh currentColor,
+		86vw 86vh currentColor,
+		30vw 92vh currentColor;
+}
+.hero-balloons-1 {
+	box-shadow:
+		14vw 18vh currentColor,
+		38vw 4vh currentColor,
+		58vw 18vh currentColor,
+		82vw 4vh currentColor,
+		96vw 22vh currentColor,
+		4vw 56vh currentColor,
+		94vw 58vh currentColor,
+		22vw 78vh currentColor,
+		56vw 80vh currentColor,
+		78vw 76vh currentColor,
+		96vw 92vh currentColor,
+		8vw 94vh currentColor;
+}
+.hero-balloons-2 {
+	box-shadow:
+		32vw 22vh currentColor,
+		66vw 6vh currentColor,
+		88vw 28vh currentColor,
+		2vw 26vh currentColor,
+		18vw 4vh currentColor,
+		6vw 72vh currentColor,
+		88vw 68vh currentColor,
+		38vw 70vh currentColor,
+		62vw 72vh currentColor,
+		4vw 88vh currentColor,
+		92vw 82vh currentColor,
+		50vw 94vh currentColor;
+}
+.hero-balloons-3 {
+	box-shadow:
+		10vw 30vh currentColor,
+		26vw 14vh currentColor,
+		54vw 28vh currentColor,
+		80vw 22vh currentColor,
+		94vw 36vh currentColor,
+		16vw 64vh currentColor,
+		48vw 58vh currentColor,
+		76vw 62vh currentColor,
+		30vw 76vh currentColor,
+		66vw 84vh currentColor,
+		82vw 94vh currentColor,
+		16vw 96vh currentColor;
+}
+.hero-balloons-4 {
+	box-shadow:
+		40vw 8vh currentColor,
+		60vw 12vh currentColor,
+		86vw 18vh currentColor,
+		2vw 14vh currentColor,
+		12vw 50vh currentColor,
+		86vw 48vh currentColor,
+		20vw 70vh currentColor,
+		50vw 64vh currentColor,
+		84vw 72vh currentColor,
+		36vw 86vh currentColor,
+		60vw 90vh currentColor,
+		88vw 96vh currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.hero-balloons {
+		opacity: 0.55;
 	}
-	.hero-stars-2-b {
-		box-shadow:
-			21vw 8vh currentColor, 49vw 12vh currentColor,
-			77vw 8vh currentColor, 13vw 38vh currentColor,
-			41vw 38vh currentColor, 69vw 42vh currentColor,
-			7vw 62vh currentColor, 35vw 66vh currentColor,
-			63vw 70vh currentColor, 91vw 74vh currentColor,
-			39vw 94vh currentColor;
-	}
+}
 </style>

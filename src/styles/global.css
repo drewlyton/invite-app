@@ -3,6 +3,7 @@
 @theme {
 	--animate-bounce-down: bounce-down 1.5s ease-in-out infinite;
 	--animate-twinkle: twinkle 4s ease-in-out infinite;
+	--animate-balloon-float: balloon-float 7s ease-in-out infinite;
 
 	--font-heading: ui-sans-serif, system-ui, sans-serif;
 	--font-body: ui-sans-serif, system-ui, sans-serif;
@@ -27,6 +28,16 @@
 	}
 	50% {
 		opacity: 0.3;
+	}
+}
+
+@keyframes balloon-float {
+	0%,
+	100% {
+		transform: translateY(0) rotate(-1deg);
+	}
+	50% {
+		transform: translateY(-14px) rotate(1.5deg);
 	}
 }
 

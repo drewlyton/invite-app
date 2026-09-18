@@ -9,6 +9,7 @@ export type Theme = {
 	heroText: string;
 	accentTextShadow?: string;
 	stars: { color: string } | null;
+	balloons: { colors: string[] } | null;
 };
 
 export const themes: Record<string, Theme> = {
@@ -22,6 +23,7 @@ export const themes: Record<string, Theme> = {
 		heroBg: "transparent",
 		heroText: "#1c1917",
 		stars: null,
+		balloons: null,
 	},
 	"game-night": {
 		id: "game-night",
@@ -34,6 +36,7 @@ export const themes: Record<string, Theme> = {
 		heroText: "#ffffff",
 		accentTextShadow: "4px 4px 0 rgba(0,0,0,0.45)",
 		stars: { color: "#ffffff" },
+		balloons: null,
 	},
 	"game-night-light": {
 		id: "game-night-light",
@@ -46,6 +49,28 @@ export const themes: Record<string, Theme> = {
 		heroText: "#1c1917",
 		accentTextShadow: "4px 4px 0 rgba(0,0,0,0.12)",
 		stars: { color: "#44403c" },
+		balloons: null,
+	},
+	birthday: {
+		id: "birthday",
+		fonts: {
+			heading:
+				"ui-rounded, 'Hiragino Maru Gothic ProN', 'Quicksand', system-ui, sans-serif",
+			body: "ui-rounded, 'Hiragino Maru Gothic ProN', 'Quicksand', system-ui, sans-serif",
+		},
+		accent: "#db2777",
+		heroBg: "#fff5f7",
+		heroText: "#1c1917",
+		stars: null,
+		balloons: {
+			colors: [
+				"#fbcfe8", // pink-200
+				"#bbf7d0", // green-200 (mint)
+				"#bae6fd", // sky-200
+				"#ddd6fe", // violet-200 (lavender)
+				"#fed7aa", // orange-200 (peach)
+			],
+		},
 	},
 };
 
