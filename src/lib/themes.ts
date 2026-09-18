@@ -54,9 +54,8 @@ export const themes: Record<string, Theme> = {
 	birthday: {
 		id: "birthday",
 		fonts: {
-			heading:
-				"ui-rounded, 'Hiragino Maru Gothic ProN', 'Quicksand', system-ui, sans-serif",
-			body: "ui-rounded, 'Hiragino Maru Gothic ProN', 'Quicksand', system-ui, sans-serif",
+			heading: "'Playfair Display', 'Times New Roman', Georgia, serif",
+			body: "Lora, Georgia, 'Times New Roman', serif",
 		},
 		accent: "#db2777",
 		heroBg: "#fff5f7",

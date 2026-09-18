@@ -240,102 +240,82 @@ const titleStyle = theme.accentTextShadow
 		39vw 94vh currentColor;
 }
 
-/* Balloon decorations: each layer is a small colored shape with many
-	   box-shadow copies positioned around the viewport edges/corners. */
+/* Balloon decorations: each layer is a small round bulb with a triangular
+	   tie and a thin string. Box-shadow copies scatter extra balloons around
+	   the viewport edges/corners, avoiding the center where the text sits. */
 .hero-balloons {
-	width: 28px;
-	height: 36px;
+	width: 30px;
+	height: 30px;
 	background: currentColor;
-	border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+	border-radius: 50%;
 	opacity: 0.7;
+}
+.hero-balloons::before {
+	content: "";
+	position: absolute;
+	bottom: -7px;
+	left: 50%;
+	width: 0;
+	height: 0;
+	border-left: 5px solid transparent;
+	border-right: 5px solid transparent;
+	border-top: 8px solid currentColor;
+	transform: translateX(-50%);
+	opacity: 0.75;
 }
 .hero-balloons::after {
 	content: "";
 	position: absolute;
-	bottom: -5px;
+	bottom: -32px;
 	left: 50%;
-	width: 6px;
-	height: 6px;
+	width: 1px;
+	height: 28px;
 	background: currentColor;
-	border-radius: 50% 50% 50% 0;
-	transform: translateX(-50%) rotate(45deg);
-	opacity: 0.55;
+	transform: translateX(-50%);
+	opacity: 0.45;
 }
-
 .hero-balloons-0 {
 	box-shadow:
-		6vw 9vh currentColor,
-		22vw 6vh currentColor,
-		48vw 14vh currentColor,
-		74vw 8vh currentColor,
-		92vw 11vh currentColor,
-		8vw 38vh currentColor,
-		90vw 42vh currentColor,
-		14vw 84vh currentColor,
-		44vw 88vh currentColor,
-		70vw 90vh currentColor,
-		86vw 86vh currentColor,
-		30vw 92vh currentColor;
+		5vw 8vh currentColor,
+		18vw 6vh currentColor,
+		82vw 9vh currentColor,
+		95vw 12vh currentColor,
+		6vw 84vh currentColor,
+		16vw 90vh currentColor,
+		82vw 86vh currentColor,
+		94vw 92vh currentColor;
 }
 .hero-balloons-1 {
 	box-shadow:
-		14vw 18vh currentColor,
-		38vw 4vh currentColor,
-		58vw 18vh currentColor,
-		82vw 4vh currentColor,
-		96vw 22vh currentColor,
-		4vw 56vh currentColor,
-		94vw 58vh currentColor,
-		22vw 78vh currentColor,
-		56vw 80vh currentColor,
-		78vw 76vh currentColor,
-		96vw 92vh currentColor,
-		8vw 94vh currentColor;
+		10vw 14vh currentColor,
+		90vw 4vh currentColor,
+		3vw 76vh currentColor,
+		12vw 82vh currentColor,
+		88vw 78vh currentColor,
+		96vw 86vh currentColor;
 }
 .hero-balloons-2 {
 	box-shadow:
-		32vw 22vh currentColor,
-		66vw 6vh currentColor,
-		88vw 28vh currentColor,
-		2vw 26vh currentColor,
-		18vw 4vh currentColor,
-		6vw 72vh currentColor,
-		88vw 68vh currentColor,
-		38vw 70vh currentColor,
-		62vw 72vh currentColor,
+		26vw 10vh currentColor,
+		74vw 14vh currentColor,
+		2vw 22vh currentColor,
+		97vw 22vh currentColor,
 		4vw 88vh currentColor,
-		92vw 82vh currentColor,
-		50vw 94vh currentColor;
+		92vw 90vh currentColor;
 }
 .hero-balloons-3 {
 	box-shadow:
-		10vw 30vh currentColor,
-		26vw 14vh currentColor,
-		54vw 28vh currentColor,
-		80vw 22vh currentColor,
-		94vw 36vh currentColor,
-		16vw 64vh currentColor,
-		48vw 58vh currentColor,
-		76vw 62vh currentColor,
-		30vw 76vh currentColor,
-		66vw 84vh currentColor,
-		82vw 94vh currentColor,
-		16vw 96vh currentColor;
+		34vw 6vh currentColor,
+		66vw 8vh currentColor,
+		8vw 70vh currentColor,
+		90vw 72vh currentColor;
 }
 .hero-balloons-4 {
 	box-shadow:
-		40vw 8vh currentColor,
-		60vw 12vh currentColor,
-		86vw 18vh currentColor,
-		2vw 14vh currentColor,
-		12vw 50vh currentColor,
-		86vw 48vh currentColor,
-		20vw 70vh currentColor,
-		50vw 64vh currentColor,
-		84vw 72vh currentColor,
-		36vw 86vh currentColor,
-		60vw 90vh currentColor,
-		88vw 96vh currentColor;
+		4vw 4vh currentColor,
+		96vw 16vh currentColor,
+		22vw 94vh currentColor,
+		78vw 96vh currentColor;
 }
 
 @media (prefers-reduced-motion: reduce) {

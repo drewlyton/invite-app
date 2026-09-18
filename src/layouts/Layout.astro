@@ -17,25 +17,30 @@ const title = pageTitle ? `${pageTitle} · Lyton Events` : "Lyton Events";
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width">
-		<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💌</text></svg>">
-		<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💌</text></svg>">>
+		<link
+			rel="icon"
+			type="image/svg+xml"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%8C%3C/text%3E%3C/svg%3E"
+		>
+		<link
+			rel="icon"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%8C%3C/text%3E%3C/svg%3E"
+		>
 		<link rel="preconnect" href="https://fonts.googleapis.com">
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<link
 			rel="stylesheet"
-			href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&display=swap"
 		>
 		<meta name="generator" content={Astro.generator}>
 		<title>{title}</title>
 		{ogTitle && <meta property="og:title" content={ogTitle} />}
 		{ogDescription && <meta property="og:description" content={ogDescription} />}
 		{ogImage && <meta property="og:image" content={ogImage} />}
-		<meta property="og:type" content="website" />
-		<meta name="twitter:card" content="summary_large_image" />
+		<meta property="og:type" content="website">
+		<meta name="twitter:card" content="summary_large_image">
 		{ogTitle && <meta name="twitter:title" content={ogTitle} />}
-		{ogDescription && (
-			<meta name="twitter:description" content={ogDescription} />
-		)}
+		{ogDescription && <meta name="twitter:description" content={ogDescription} />}
 		{ogImage && <meta name="twitter:image" content={ogImage} />}
 	</head>
 	<body>
