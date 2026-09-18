@@ -19,6 +19,9 @@ const event = defineCollection({
 		start: z.string().optional(),
 		// ISO 8601 end time. If omitted, defaults to start + 3 hours.
 		end: z.string().optional(),
+		// Additional host notification emails for this event. Merged
+		// with the global HOST_NOTIFICATION_EMAILS env var at send time.
+		hosts: z.array(z.string().email()).optional(),
 	}),
 });
 
