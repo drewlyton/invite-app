@@ -73,17 +73,42 @@ const titleStyle = theme.accentTextShadow
 
 	{theme.clouds && (
 	<>
-		<div
-			class="hero-clouds hero-clouds-small pointer-events-none absolute inset-0 motion-safe:animate-cloud-drift-slow"
-			style={`color: ${theme.clouds.color};`}
-		/>
-		<div
-			class="hero-clouds hero-clouds-large pointer-events-none absolute inset-0 motion-safe:animate-cloud-drift-slower"
-			style={`color: ${theme.clouds.color}; animation-delay: -8s;`}
-		/>
+		{/* Distant layer: small, slow, high in the sky. Sits in the top
+		   strip so it never crosses the centered text block. */}
+		<div class="hero-clouds pointer-events-none absolute inset-x-0 top-0 z-0 h-[26%] motion-safe:animate-cloud-scroll-slow motion-reduce:hidden" aria-hidden="true">
+			<div class="hero-clouds-strip">
+				{[...Array(2)].map(() => (
+					<div class="hero-clouds-section">
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-1" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-2" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-3" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-4" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-5" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-6" />
+						<img src="/clouds/cloud-small.svg" alt="" class="hero-cloud hero-cloud-7" />
+					</div>
+				))}
+			</div>
+		</div>
+		{/* Closer layer: larger, faster, lower in the sky. Sits in the
+		   bottom strip; parallax makes it appear nearer to the camera. */}
+		<div class="hero-clouds pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[24%] motion-safe:animate-cloud-scroll-fast motion-reduce:hidden" aria-hidden="true">
+			<div class="hero-clouds-strip">
+				{[...Array(2)].map(() => (
+					<div class="hero-clouds-section">
+						<img src="/clouds/cloud-large.svg" alt="" class="hero-cloud hero-cloud-1" />
+						<img src="/clouds/cloud-large.svg" alt="" class="hero-cloud hero-cloud-2" />
+						<img src="/clouds/cloud-large.svg" alt="" class="hero-cloud hero-cloud-3" />
+						<img src="/clouds/cloud-large.svg" alt="" class="hero-cloud hero-cloud-4" />
+						<img src="/clouds/cloud-large.svg" alt="" class="hero-cloud hero-cloud-5" />
+					</div>
+				))}
+			</div>
+		</div>
 	</>
 )}
 
+	<div class="hero-content relative z-10 flex flex-col items-center">
 	<p
 		class="text-base uppercase tracking-widest opacity-70 sm:text-base"
 		style={`color: ${theme.heroText};`}
@@ -145,6 +170,7 @@ const titleStyle = theme.accentTextShadow
 			aria-hidden="true"
 		/>
 	</a>
+	</div>
 </section>
 
 <style>
@@ -309,51 +335,108 @@ const titleStyle = theme.accentTextShadow
 		78vw 96vh currentColor;
 }
 
-/* Pixel-art clouds: each layer is one div with the cloud SVG as its
-	   background; box-shadow copies scatter extra clouds around the
-	   viewport edges/corners, avoiding the center text block. The
-	   layer's own horizontal drift animates the whole flock slowly
-	   across the screen, evoking a lazy sky. */
-.hero-clouds {
-	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 5' shape-rendering='crispEdges' preserveAspectRatio='xMidYMid meet'><rect x='2' y='0' width='4' height='1' fill='currentColor'/><rect x='0' y='1' width='6' height='1' fill='currentColor'/><rect x='0' y='2' width='11' height='1' fill='currentColor'/><rect x='0' y='3' width='11' height='1' fill='currentColor'/><rect x='1' y='4' width='9' height='1' fill='currentColor'/></svg>");
-	background-repeat: no-repeat;
+/* Pixel-art cloud parallax: two strips scroll horizontally across the
+	   hero on a seamless loop. Each strip is two copies of the same cloud
+	   arrangement; animating translateX(0) -> translateX(-50%) makes the
+	   second copy perfectly replace the first when the loop restarts. The
+	   strips sit at z-index 0; .hero-content wraps the text at z-10 so the
+	   text always paints on top of the clouds. */
+.hero-clouds-strip {
+	display: flex;
+	width: 200%;
+	height: 100%;
 	image-rendering: pixelated;
-	opacity: 0.85;
+	will-change: transform;
 }
-.hero-clouds-small {
-	width: 66px;
-	height: 30px;
+.hero-clouds-section {
+	flex: 1 0 50%;
+	position: relative;
+	height: 100%;
 }
-.hero-clouds-large {
+.hero-cloud {
+	position: absolute;
+	image-rendering: pixelated;
+}
+
+/* Small (distant) clouds: scattered high in the sky */
+.hero-clouds-section .hero-cloud-1 {
+	top: 8%;
+	left: 4%;
+	width: 90px;
+	height: auto;
+}
+.hero-clouds-section .hero-cloud-2 {
+	top: 22%;
+	left: 22%;
+	width: 70px;
+	height: auto;
+}
+.hero-clouds-section .hero-cloud-3 {
+	top: 4%;
+	left: 38%;
 	width: 110px;
-	height: 50px;
+	height: auto;
 }
-.hero-clouds-small {
-	box-shadow:
-		8vw 6vh,
-		22vw 14vh,
-		78vw 8vh,
-		94vw 18vh,
-		4vw 78vh,
-		88vw 82vh;
+.hero-clouds-section .hero-cloud-4 {
+	top: 28%;
+	left: 52%;
+	width: 80px;
+	height: auto;
 }
-.hero-clouds-large {
-	box-shadow:
-		14vw 22vh,
-		70vw 28vh,
-		2vw 64vh,
-		82vw 70vh,
-		30vw 88vh,
-		60vw 92vh;
+.hero-clouds-section .hero-cloud-5 {
+	top: 10%;
+	left: 66%;
+	width: 100px;
+	height: auto;
+}
+.hero-clouds-section .hero-cloud-6 {
+	top: 30%;
+	left: 80%;
+	width: 75px;
+	height: auto;
+}
+.hero-clouds-section .hero-cloud-7 {
+	top: 14%;
+	left: 92%;
+	width: 85px;
+	height: auto;
+}
+
+/* Large (closer) clouds: lower in the sky */
+.hero-clouds + .hero-clouds .hero-cloud-1 {
+	top: 18%;
+	left: 10%;
+	width: 180px;
+	height: auto;
+}
+.hero-clouds + .hero-clouds .hero-cloud-2 {
+	top: 55%;
+	left: 32%;
+	width: 200px;
+	height: auto;
+}
+.hero-clouds + .hero-clouds .hero-cloud-3 {
+	top: 25%;
+	left: 58%;
+	width: 190px;
+	height: auto;
+}
+.hero-clouds + .hero-clouds .hero-cloud-4 {
+	top: 60%;
+	left: 78%;
+	width: 170px;
+	height: auto;
+}
+.hero-clouds + .hero-clouds .hero-cloud-5 {
+	top: 30%;
+	left: 96%;
+	width: 185px;
+	height: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.hero-balloons {
 		opacity: 0.55;
-	}
-
-	.hero-clouds {
-		opacity: 0.6;
 	}
 }
 </style>

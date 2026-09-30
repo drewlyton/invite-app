@@ -4,8 +4,8 @@
 	--animate-bounce-down: bounce-down 1.5s ease-in-out infinite;
 	--animate-twinkle: twinkle 4s ease-in-out infinite;
 	--animate-balloon-float: balloon-float 7s ease-in-out infinite;
-	--animate-cloud-drift-slow: cloud-drift 24s ease-in-out infinite;
-	--animate-cloud-drift-slower: cloud-drift 36s ease-in-out infinite;
+	--animate-cloud-scroll-slow: cloud-scroll 90s linear infinite;
+	--animate-cloud-scroll-fast: cloud-scroll 60s linear infinite;
 
 	--font-heading: ui-sans-serif, system-ui, sans-serif;
 	--font-body: ui-sans-serif, system-ui, sans-serif;
@@ -43,13 +43,12 @@
 	}
 }
 
-@keyframes cloud-drift {
-	0%,
-	100% {
-		transform: translateX(-40px);
+@keyframes cloud-scroll {
+	from {
+		transform: translateX(0);
 	}
-	50% {
-		transform: translateX(40px);
+	to {
+		transform: translateX(-50%);
 	}
 }
 
