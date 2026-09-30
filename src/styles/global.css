@@ -4,6 +4,8 @@
 	--animate-bounce-down: bounce-down 1.5s ease-in-out infinite;
 	--animate-twinkle: twinkle 4s ease-in-out infinite;
 	--animate-balloon-float: balloon-float 7s ease-in-out infinite;
+	--animate-cloud-drift-slow: cloud-drift 24s ease-in-out infinite;
+	--animate-cloud-drift-slower: cloud-drift 36s ease-in-out infinite;
 
 	--font-heading: ui-sans-serif, system-ui, sans-serif;
 	--font-body: ui-sans-serif, system-ui, sans-serif;
@@ -38,6 +40,16 @@
 	}
 	50% {
 		transform: translateY(-14px) rotate(1.5deg);
+	}
+}
+
+@keyframes cloud-drift {
+	0%,
+	100% {
+		transform: translateX(-40px);
+	}
+	50% {
+		transform: translateX(40px);
 	}
 }
 

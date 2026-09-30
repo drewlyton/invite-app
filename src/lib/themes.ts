@@ -10,6 +10,7 @@ export type Theme = {
 	accentTextShadow?: string;
 	stars: { color: string } | null;
 	balloons: { colors: string[] } | null;
+	clouds: { color: string } | null;
 };
 
 export const themes: Record<string, Theme> = {
@@ -24,6 +25,7 @@ export const themes: Record<string, Theme> = {
 		heroText: "#1c1917",
 		stars: null,
 		balloons: null,
+		clouds: null,
 	},
 	"game-night": {
 		id: "game-night",
@@ -37,6 +39,7 @@ export const themes: Record<string, Theme> = {
 		accentTextShadow: "4px 4px 0 rgba(0,0,0,0.45)",
 		stars: { color: "#ffffff" },
 		balloons: null,
+		clouds: null,
 	},
 	"game-night-light": {
 		id: "game-night-light",
@@ -50,6 +53,7 @@ export const themes: Record<string, Theme> = {
 		accentTextShadow: "4px 4px 0 rgba(0,0,0,0.12)",
 		stars: { color: "#44403c" },
 		balloons: null,
+		clouds: { color: "#d6d3d1" },
 	},
 	birthday: {
 		id: "birthday",
@@ -70,6 +74,7 @@ export const themes: Record<string, Theme> = {
 				"#fed7aa", // orange-200 (peach)
 			],
 		},
+		clouds: null,
 	},
 };
 

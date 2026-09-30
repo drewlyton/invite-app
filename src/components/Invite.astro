@@ -71,6 +71,19 @@ const titleStyle = theme.accentTextShadow
 	</>
 )}
 
+	{theme.clouds && (
+	<>
+		<div
+			class="hero-clouds hero-clouds-small pointer-events-none absolute inset-0 motion-safe:animate-cloud-drift-slow"
+			style={`color: ${theme.clouds.color};`}
+		/>
+		<div
+			class="hero-clouds hero-clouds-large pointer-events-none absolute inset-0 motion-safe:animate-cloud-drift-slower"
+			style={`color: ${theme.clouds.color}; animation-delay: -8s;`}
+		/>
+	</>
+)}
+
 	<p
 		class="text-base uppercase tracking-widest opacity-70 sm:text-base"
 		style={`color: ${theme.heroText};`}
@@ -296,9 +309,51 @@ const titleStyle = theme.accentTextShadow
 		78vw 96vh currentColor;
 }
 
+/* Pixel-art clouds: each layer is one div with the cloud SVG as its
+	   background; box-shadow copies scatter extra clouds around the
+	   viewport edges/corners, avoiding the center text block. The
+	   layer's own horizontal drift animates the whole flock slowly
+	   across the screen, evoking a lazy sky. */
+.hero-clouds {
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 5' shape-rendering='crispEdges' preserveAspectRatio='xMidYMid meet'><rect x='2' y='0' width='4' height='1' fill='currentColor'/><rect x='0' y='1' width='6' height='1' fill='currentColor'/><rect x='0' y='2' width='11' height='1' fill='currentColor'/><rect x='0' y='3' width='11' height='1' fill='currentColor'/><rect x='1' y='4' width='9' height='1' fill='currentColor'/></svg>");
+	background-repeat: no-repeat;
+	image-rendering: pixelated;
+	opacity: 0.85;
+}
+.hero-clouds-small {
+	width: 66px;
+	height: 30px;
+}
+.hero-clouds-large {
+	width: 110px;
+	height: 50px;
+}
+.hero-clouds-small {
+	box-shadow:
+		8vw 6vh,
+		22vw 14vh,
+		78vw 8vh,
+		94vw 18vh,
+		4vw 78vh,
+		88vw 82vh;
+}
+.hero-clouds-large {
+	box-shadow:
+		14vw 22vh,
+		70vw 28vh,
+		2vw 64vh,
+		82vw 70vh,
+		30vw 88vh,
+		60vw 92vh;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.hero-balloons {
 		opacity: 0.55;
+	}
+
+	.hero-clouds {
+		opacity: 0.6;
 	}
 }
 </style>
