@@ -111,12 +111,12 @@ export default function RunnerGame({
 		const held = new Set<string>();
 
 		// --- Player-driven sky parallax ------------------------------------
-		// Ambient drift stays a CSS animation on each layer's outer element, so
-		// the sky keeps moving while the game is idle and no rAF loop is running.
-		// Here we only ever write the inner strip's transform, and we accumulate
-		// the player's travel incrementally: recomputing from the absolute
-		// groundOffset would snap every layer the moment pixelScale changed on
-		// resize.
+		// Clouds keep a CSS ambient drift on their outer element, so they move
+		// while the game is idle and no rAF loop is running. Stars have no such
+		// animation: they are stationary until the player moves. Either way, this
+		// code only ever writes the inner strip's transform, and it accumulates the
+		// player's travel incrementally: recomputing from the absolute groundOffset
+		// would snap every layer the moment pixelScale changed on resize.
 		type ParallaxLayer = {
 			strip: HTMLElement;
 			rate: number;
@@ -131,7 +131,10 @@ export default function RunnerGame({
 
 		const applyParallax = (): void => {
 			for (const layer of parallaxLayers) {
-				layer.strip.style.transform = `translateX(${-layer.offset}px)`;
+				// A zero offset means "no travel yet": leave the transform off
+				// entirely so an idle layer carries no transform, not a no-op one.
+				layer.strip.style.transform =
+					layer.offset === 0 ? "" : `translateX(${-layer.offset}px)`;
 			}
 		};
 
@@ -177,10 +180,12 @@ export default function RunnerGame({
 			applyParallax();
 		};
 
-		const resetParallax = (): void => {
-			prevGroundOffset = 0;
-			for (const layer of parallaxLayers) layer.offset = 0;
-			applyParallax();
+		const resyncParallax = (): void => {
+			// A restart zeroes groundOffset. Re-point the baseline at it so the next
+			// running frame computes a small delta, but keep the accumulated offsets
+			// so the sky holds position across the transition instead of snapping
+			// back to the section origin.
+			prevGroundOffset = view(game).groundOffset;
 		};
 
 		const applyCanvasSize = (): void => {
@@ -312,7 +317,7 @@ export default function RunnerGame({
 			if (current === "dead") {
 				game = restart(game);
 				setPhase("running");
-				resetParallax();
+				resyncParallax();
 				startLoop();
 				return;
 			}

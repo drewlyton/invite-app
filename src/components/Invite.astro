@@ -36,11 +36,16 @@ const subtitleMargin = theme.detailsBelowFold
 		? "margin-top: 2rem;"
 		: "";
 
-// The sky layers compose two transforms: an outer element running the ambient
-// CSS drift and an inner strip the island translates for player parallax. Each
-// transform can consume up to one section width, so the strip needs three
-// copies to stay covered at every combination; with two it runs out of content
-// at the right edge whenever the drift and the player offset overlap.
+// The sky layers compose two transforms: the inner strip carries the island's
+// player parallax, and the cloud layer's outer element additionally runs the
+// ambient CSS drift. A transform can consume up to one section width, so the
+// cloud strip needs three copies to stay covered when the drift and the player
+// offset overlap at the right edge; with two it runs out of content there.
+//
+// Stars have no ambient drift (they hold still until the player moves), so the
+// player offset alone would be safe with two copies. The constant stays shared
+// at three so both families keep one strip geometry, and the spare copy costs
+// nothing. Do not "optimise" it to two: that would break the clouds.
 const SKY_COPIES = 3;
 
 type StarLayer = {
@@ -71,7 +76,7 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	{theme.stars &&
 	starLayers.map((layer) => (
 		<div
-			class="hero-sky-layer pointer-events-none absolute inset-0 motion-safe:animate-star-scroll"
+			class="hero-sky-layer pointer-events-none absolute inset-0"
 			data-parallax={layer.rate}
 			aria-hidden="true"
 		>
