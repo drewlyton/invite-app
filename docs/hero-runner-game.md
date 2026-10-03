@@ -161,15 +161,26 @@ GROUND_Y    = worldHeight - GROUND_MARGIN
 ```
 
 Starting values: `TARGET_WORLD_HEIGHT = 95`, `MIN_WORLD_WIDTH = 260`,
-`PIXEL_SCALE_MIN = 1.5`, `PIXEL_SCALE_MAX = 3`, `GROUND_MARGIN = 4`.
+`PIXEL_SCALE_MIN = 1.5`, `PIXEL_SCALE_MAX = 3`, `GROUND_MARGIN = 14`.
+
+`GROUND_MARGIN` is the distance from the bottom of the band up to the ground line,
+so **raising the ground means increasing it**. It lives in world units and therefore
+scales with `pixelScale` automatically.
 
 Both terms are **upper bounds** on `pixelScale`, and taking their `min` is what
 makes each one hold:
 
 - **Vertical fit.** `pixelScale <= bandHeight / TARGET_WORLD_HEIGHT` guarantees
-  `worldHeight >= TARGET_WORLD_HEIGHT`. Since `95 > playerHeight(22) + apex(45) +
-  GROUND_MARGIN(4) = 71`, the jump arc always fits inside the band with room to
-  spare.
+  `worldHeight >= TARGET_WORLD_HEIGHT`. The composition needs
+  `worldHeight >= playerHeight + apex + GROUND_MARGIN`, which at the floor of 95 is
+  `22 + 45.02 + 14 = 81`, so it fits with room to spare — the player's sprite top
+  sits ~15 units inside the band at the apex.
+
+  This also puts a ceiling on how far the ground can be raised:
+  **`GROUND_MARGIN <= worldHeight - apex - playerHeight ≈ 27.98`** at the tightest
+  geometry. Past that the player's head leaves the top of the band mid-jump.
+  Assertion 6 in [Verification](#verification) guards this, because it is exactly
+  the kind of number a later re-tune would push past silently.
 - **Width floor.** `pixelScale <= canvasWidth / MIN_WORLD_WIDTH` guarantees
   `worldWidth >= MIN_WORLD_WIDTH`, which is what preserves reaction time on a
   phone.
@@ -381,6 +392,13 @@ than hard.
 - Optional inverted-palette phase at score milestones is **off by default**: it
   flips to a dark background and fights both the white page and the contrast
   rules in [Accessibility](#accessibility).
+- **The ground is filled, not just a line.** Raising `GROUND_MARGIN` lifts the
+  ground line, and a bare dash strip floating there would leave dead white space
+  beneath it. The band from `groundY` down to the bottom of the band is filled
+  with `theme.runner.ground` at `globalAlpha = 0.22` (≈ `#ecebe9` over the white
+  hero), with the dash strip drawn at full opacity along the top edge. That alpha
+  is an unmeasured feel knob and the single place to adjust the fill's weight.
+  Keep it muted, or it eats the hero text's contrast on short screens.
 
 ## Sprites
 
@@ -514,29 +532,52 @@ jumping does not move the sky.
 
 ### Two nested transforms, and why
 
-Each layer is an **outer** element carrying a CSS ambient drift plus an **inner**
-strip carrying the island's player-driven offset:
+Each layer is an **outer** element plus an **inner** strip, and which of the two
+carries a CSS ambient drift differs by layer family:
 
 ```
-.hero-sky-layer[data-parallax="<rate>"]   /* CSS ambient drift, runs forever */
+.hero-sky-layer[data-parallax="<rate>"]   /* CSS ambient drift (clouds only) */
   .hero-sky-strip[data-parallax-strip]     /* JS transform, one section modulo */
     .hero-sky-section × SKY_COPIES         /* identical copies */
 ```
 
-The split is load-bearing. Ambient drift must stay a **CSS** animation, because the
-sky is meant to keep drifting while the game is idle — and while idle there is
-deliberately **no rAF loop running**. Moving ambient drift into JS would freeze the
-sky for every visitor who never plays.
+- **Clouds** drift ambiently in CSS *and* take the player-driven offset.
+- **Stars** have **no ambient motion at all**. They are completely stationary until
+  the player moves, and their only positional change is the player-driven offset.
+  Keep the twinkle — it is an opacity pulse in place, not motion, so it does not
+  conflict with "stationary".
+
+The split is load-bearing. Cloud ambient drift stays a **CSS** animation because
+clouds must keep drifting while the game is idle, and while idle there is
+deliberately **no rAF loop running**. Moving it into JS would freeze the clouds for
+every visitor who never plays. Stars need no such mechanism, which is why they lose
+the CSS animation entirely rather than merely being slowed down — a slow drift is
+still motion.
 
 ### Wrap period and copy count
 
 The strip is divided into identical sections, and the wrap period is **exactly one
-section width**. Both the CSS drift and the JS offset wrap over that period, and
-because the transforms are nested their shifts **add** — so their sum can reach two
-sections, not one. That is why the strip needs **three** copies (`SKY_COPIES = 3`,
-each `flex: 1 0 33.3333%`): with only two, the far edge of the viewport goes blank
-whenever the ambient drift and the player offset overlap near their maxima. Verified
-in the DOM at the worst case (ambient ~99% plus player ~99%) rather than assumed.
+section width**. Where a layer has both a CSS drift and a JS offset, the nested
+transforms **add**, so their combined shift can reach two sections rather than one.
+That is what forces **three** copies (`SKY_COPIES = 3`, each `flex: 1 0 33.3333%`):
+with only two, the far edge of the viewport goes blank whenever the ambient drift
+and the player offset overlap near their maxima. Verified in the DOM at the worst
+case (ambient ~99% plus player ~99%) rather than assumed.
+
+Stars are the weaker case — with no ambient drift their shift never exceeds one
+section, so two copies would do — but the constant is deliberately shared at 3 for
+all layers. **Do not "optimise" the cloud layer down to two.**
+
+### Cloud count
+
+The cloud layer renders **4 clouds per section**, down from 7. Because the sections
+must stay byte-identical for the wrap to be seamless, the pattern repeats exactly,
+and fewer clouds makes that repetition more visible: the four clouds cluster in the
+left ~58% of each section, leaving a ~585px cloudless run every hero-width. At max
+speed the combined ambient-plus-player travel is ~182px/s, so the identical clump
+recurs roughly every 7s. This is the accepted trade for a lighter sky, not a bug —
+but it is the reason the repetition is noticeable, and varying the sections would
+break the wrap rather than fix it.
 
 ### Driving the offset
 
@@ -546,12 +587,20 @@ in the DOM at the worst case (ambient ~99% plus player ~99%) rather than assumed
 - Accumulate **incrementally** from the frame delta, not from the absolute
   `groundOffset`: `pixelScale` changes on resize, and an absolute recomputation makes
   every layer jump at that moment.
-- Advances only while `phase === "running"`. It holds when the game ends, and
-  restart resets it to zero.
+- Advances only while `phase === "running"`, so it holds on death and resumes on the
+  next run.
+- **Restart pauses and resumes; it must not snap.** A restart zeroes `groundOffset`,
+  so the next delta would be a large *negative* value and yank every layer
+  backwards. Re-point the stored previous offset at the new `groundOffset` while
+  **keeping** the accumulated offsets. Zeroing the offsets — the obvious fix —
+  instead snaps the sky back to the section origin, which is the most visible thing
+  the stars ever do now that they have no ambient motion of their own.
+- The transform is cleared entirely at offset 0 rather than written as
+  `translateX(0px)`, so an idle star layer genuinely has no transform.
 - Reduced motion gets no parallax at all.
 - Rates come from the markup so each layer owns its depth: 4px stars `0.10`, 2px
-  stars `0.05`, clouds `0.30` (larger and nearer moves faster). Ambient drift is
-  `90s` for clouds and `300s` for stars.
+  stars `0.05`, clouds `0.30` (larger and nearer moves faster). The clouds' ambient
+  drift is `90s`; stars have none.
 
 ### The cloud seam bug this had to fix
 
@@ -661,8 +710,9 @@ than hidden:
 - `public/clouds/cloud-large.svg` is now unreferenced by anything, since the game
   replaced the bottom cloud layer. Delete it when convenient.
 - Sprites are still placeholder rectangles; step 4 is unbuilt.
-- `SKY_COPIES = 3`, not the 2 that a single wrapper-free loop would need. The two
-  nested transforms add, so their sum can reach two sections; see
+- `SKY_COPIES = 3`, shared by all layers. Only the cloud layer strictly needs 3
+  (its ambient and player-driven shifts add and can reach two sections); stars
+  carry the player offset only and would be safe with 2. Keep 3 — see
   [Sky parallax](#sky-parallax).
 - The star speck field is still `vw`/`vh` box-shadow offsets inside a section that
   is currently exactly viewport width. Periodicity holds only while the hero is at
@@ -671,9 +721,13 @@ than hidden:
 - `will-change: transform` is set on all seven sky strips, each 3× the hero width
   and (for stars) full hero height. That is the standard way to keep parallax cheap,
   but it promotes large compositor layers and has not been measured on a phone.
-- Part 2's star restructure touches every theme that declares `stars`, which
-  includes `game-night` (it gains a slow star drift). No live page is affected:
-  only `30th-bday` and `first-bday` have content, and `game-night` is unreferenced.
+- The star layers were restructured into the periodic multi-copy form for **every**
+  theme that declares `stars`, which includes `game-night`. It no longer gains any
+  motion (stars have no ambient drift), so the only difference there is structural.
+  No live page is affected: only `30th-bday` and `first-bday` have content, and
+  `game-night` is unreferenced.
+- The ground fill's `globalAlpha = 0.22` is an unmeasured guess, since no browser
+  was available to check contrast against the hero text.
 - `TUNING`, `Tuning`, and `AIR_TIME` are exported, and `createGame` accepts
 `tuning?: Partial<Tuning>`. This is a deliberate addition to the surface described
 above: it lets the debug page and harness read real values instead of hand-copied
@@ -706,14 +760,35 @@ There is no test runner in this repo, so:
     10–16 units tall, so a jump needs several frames of rise before the boxes
     would overlap at all. The two readings differ and the literal one is
     unsatisfiable; use the definition above.
+  - **Resize**: the run survives a geometry change — distance, score, phase,
+    obstacle `x`, and ground clearances are unchanged, and the run keeps
+    progressing.
+  - **Vertical fit at the tightest geometry**: sweep the band-height clamp and a
+    spread of widths, take the smallest `worldHeight`, and assert
+    `groundMargin <= worldHeight - apex - playerHeight` plus that the sprite top at
+    apex stays inside the band. **Measure the apex in that geometry** rather than
+    using the nominal value — the integrator undershoots it (43.56 vs 45.02 units),
+    so the nominal bound is the conservative one and the measured one has ~1.5
+    units more headroom. The sweep must widen if the band clamp ever changes, or it
+    could miss a new tightest case.
 
   Assertions and reported numbers must be **derived from `TUNING`**, never
   hand-copied. A hardcoded airtime in the harness is the bug class that produced
   the stale `MIN_WORLD_WIDTH` narrative, and a stale airtime makes the spacing
   assertion stricter than the spawner actually guarantees.
 - **No autopilot required**: an "autopilot" that plays the game unattended is
-  deliberately not needed — it is roughly as hard to write as the game itself,
-  and the four assertions above cover the same risk deterministically.
+  deliberately not needed — it is roughly as hard to write as the game itself, and
+  the assertions above cover the same risk deterministically.
+- **Parallax and sky**, which the Node harness cannot reach because they live in the
+  component: verify in a real page rather than by reading code.
+  - Idle: star layers have `animation-name: none` and no transform; the cloud layer
+    still has its `90s` drift. This is the check that would have caught the star
+    drift being left in place.
+  - Death: sample the strip transforms at death and again ~500ms later; they must be
+    identical, i.e. frozen.
+  - Restart: the accumulated offsets must be **continuous** across the transition
+    (no snap in either direction) and then resume at the normal per-frame rate.
+    Watch the *deltas*, not the absolute values.
 - **`astro check`** for types, **`npm run lint`** for the Biome rules
   (`recommended` + organize-imports), and **`astro build`**.
 
@@ -729,6 +804,11 @@ hero):
 - [ ] Scrolling to the RSVP form stops the rAF loop.
 - [ ] No obstacle is ever unclearable at max speed.
 - [ ] Hero text stays readable over the sprites.
+- [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
+      still distinguishable against it.
+- [ ] The raised ground does not make the playfield feel cramped above the line.
+- [ ] Idle: stars are completely still; clouds still drift slowly.
+- [ ] Death and restart: the sky holds position and resumes smoothly, with no snap.
 
 ## Non-goals
 
