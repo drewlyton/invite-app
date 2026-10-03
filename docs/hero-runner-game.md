@@ -470,7 +470,6 @@ both the requested behaviour and the reason the page stays cheap.
 
 ## Hero and layout integration
 
-- Keep the top distant-cloud strip exactly as it is.
 - Delete the bottom `hero-clouds` (large/fast) block, its `animate-cloud-scroll-fast`
   usage, and the now-dead `.hero-clouds + .hero-clouds .hero-cloud-*` rules. That
   sibling-combinator selector depends on the two cloud divs being adjacent
@@ -484,6 +483,89 @@ both the requested behaviour and the reason the page stays cheap.
 - Colour: render in the same muted tone family as the clouds (`#d6d3d1`-ish) from
   `theme.runner.color`, not a bold dark silhouette.
 
+### Hero composition and below-the-fold details
+
+The hero holds the invitation, not the logistics: eyebrow, title, and subtitle
+centred, with the game band pinned to the bottom of the viewport. The `<hr>`, the
+date / time / location block, and the "RSVP by …" link are extracted into
+`EventDetails.astro` and rendered **either** inside the hero **or** in their own
+section between the hero and `#rsvp`, selected by `detailsBelowFold`.
+
+This is opt-in per theme because it changes what a visitor sees before scrolling,
+and it applies to `game-night-light` only. `default`, `game-night`, and `birthday`
+render the details inside the hero exactly as before.
+
+Two consequences to be aware of:
+
+- **The hero loses its scroll cue.** The "RSVP by …" link with its bouncing
+  chevrons was the only thing signalling that more content existed below. In the
+  `detailsBelowFold` layout nothing in the hero says so. Accepted for now — the
+  game band is itself an affordance — but it is a deliberate trade, not an
+  oversight.
+- The title/subtitle spacing overrides that exist for the pixel themes were sized
+  for a stacked block that has since moved out, so that gap needed re-checking by
+  eye rather than being left to the old values.
+
+## Sky parallax
+
+Cloud and star layers translate in proportion to how far the player has run, which
+gives the sky depth against the ground scrolling in the canvas. Horizontally only —
+jumping does not move the sky.
+
+### Two nested transforms, and why
+
+Each layer is an **outer** element carrying a CSS ambient drift plus an **inner**
+strip carrying the island's player-driven offset:
+
+```
+.hero-sky-layer[data-parallax="<rate>"]   /* CSS ambient drift, runs forever */
+  .hero-sky-strip[data-parallax-strip]     /* JS transform, one section modulo */
+    .hero-sky-section × SKY_COPIES         /* identical copies */
+```
+
+The split is load-bearing. Ambient drift must stay a **CSS** animation, because the
+sky is meant to keep drifting while the game is idle — and while idle there is
+deliberately **no rAF loop running**. Moving ambient drift into JS would freeze the
+sky for every visitor who never plays.
+
+### Wrap period and copy count
+
+The strip is divided into identical sections, and the wrap period is **exactly one
+section width**. Both the CSS drift and the JS offset wrap over that period, and
+because the transforms are nested their shifts **add** — so their sum can reach two
+sections, not one. That is why the strip needs **three** copies (`SKY_COPIES = 3`,
+each `flex: 1 0 33.3333%`): with only two, the far edge of the viewport goes blank
+whenever the ambient drift and the player offset overlap near their maxima. Verified
+in the DOM at the worst case (ambient ~99% plus player ~99%) rather than assumed.
+
+### Driving the offset
+
+- Source: `view(game).groundOffset`, which is world distance.
+- Convert to CSS px via `pixelScale`, or parallax speed will not match on-screen
+  world speed.
+- Accumulate **incrementally** from the frame delta, not from the absolute
+  `groundOffset`: `pixelScale` changes on resize, and an absolute recomputation makes
+  every layer jump at that moment.
+- Advances only while `phase === "running"`. It holds when the game ends, and
+  restart resets it to zero.
+- Reduced motion gets no parallax at all.
+- Rates come from the markup so each layer owns its depth: 4px stars `0.10`, 2px
+  stars `0.05`, clouds `0.30` (larger and nearer moves faster). Ambient drift is
+  `90s` for clouds and `300s` for stars.
+
+### The cloud seam bug this had to fix
+
+`@keyframes cloud-scroll` animated `translateX(0 → -50%)` while being applied to
+`.hero-clouds`, which is `inset-x-0` and therefore only **100% of the hero** wide.
+One section is also 100% of the hero, so a seamless loop needs a full section of
+travel; `-50%` moved half a section and then snapped back, giving the ambient drift
+a visible seam every cycle. The keyframe had been written as if it applied to the
+strip's width. It now ends at `-100%`.
+
+The general lesson for this file: **percentages in a transform resolve against the
+transformed element's own width**, so keyframes and the element they run on have to
+agree about which box is being measured.
+
 ## Theme wiring
 
 Add to the `Theme` type in `src/lib/themes.ts`:
@@ -495,7 +577,11 @@ runner: {
   celebrateAt?: number; // optional milestone
   celebrationMessage?: string;
 } | null;
+
+detailsBelowFold: boolean;   // required: true renders EventDetails after the hero
 ```
+
+`detailsBelowFold` is `true` only on `game-night-light`.
 
 Set it on `game-night-light` (and leave `null` on `default`, `game-night`, and
 `birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:idle … />}`.
@@ -575,6 +661,19 @@ than hidden:
 - `public/clouds/cloud-large.svg` is now unreferenced by anything, since the game
   replaced the bottom cloud layer. Delete it when convenient.
 - Sprites are still placeholder rectangles; step 4 is unbuilt.
+- `SKY_COPIES = 3`, not the 2 that a single wrapper-free loop would need. The two
+  nested transforms add, so their sum can reach two sections; see
+  [Sky parallax](#sky-parallax).
+- The star speck field is still `vw`/`vh` box-shadow offsets inside a section that
+  is currently exactly viewport width. Periodicity holds only while the hero is at
+  least as wide as the viewport; a narrower hero would need the specks re-expressed
+  relative to the section.
+- `will-change: transform` is set on all seven sky strips, each 3× the hero width
+  and (for stars) full hero height. That is the standard way to keep parallax cheap,
+  but it promotes large compositor layers and has not been measured on a phone.
+- Part 2's star restructure touches every theme that declares `stars`, which
+  includes `game-night` (it gains a slow star drift). No live page is affected:
+  only `30th-bday` and `first-bday` have content, and `game-night` is unreferenced.
 - `TUNING`, `Tuning`, and `AIR_TIME` are exported, and `createGame` accepts
 `tuning?: Partial<Tuning>`. This is a deliberate addition to the surface described
 above: it lets the debug page and harness read real values instead of hand-copied
