@@ -5,6 +5,7 @@
 	--animate-twinkle: twinkle 4s ease-in-out infinite;
 	--animate-balloon-float: balloon-float 7s ease-in-out infinite;
 	--animate-cloud-scroll-slow: cloud-scroll 90s linear infinite;
+	--animate-star-scroll: cloud-scroll 300s linear infinite;
 
 	--font-heading: ui-sans-serif, system-ui, sans-serif;
 	--font-body: ui-sans-serif, system-ui, sans-serif;
@@ -42,12 +43,15 @@
 	}
 }
 
+/* Sky ambient drift. Applied to the outer element of a sky layer, whose width
+   is one section; -100% therefore travels exactly one section and the strip's
+   second/third copies replace the first seamlessly. */
 @keyframes cloud-scroll {
 	from {
 		transform: translateX(0);
 	}
 	to {
-		transform: translateX(-50%);
+		transform: translateX(-100%);
 	}
 }
 

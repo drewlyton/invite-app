@@ -35,6 +35,32 @@ const subtitleMargin = theme.detailsBelowFold
 	: pixelHero
 		? "margin-top: 2rem;"
 		: "";
+
+// The sky layers compose two transforms: an outer element running the ambient
+// CSS drift and an inner strip the island translates for player parallax. Each
+// transform can consume up to one section width, so the strip needs three
+// copies to stay covered at every combination; with two it runs out of content
+// at the right edge whenever the drift and the player offset overlap.
+const SKY_COPIES = 3;
+
+type StarLayer = {
+	className: string;
+	delay: string;
+	// Parallax depth: world pixels are multiplied by this. The far 2px specks
+	// move slowest, the near 4px specks a little faster, clouds fastest.
+	rate: string;
+};
+
+const starLayers: StarLayer[] = [
+	{ className: "hero-stars-1-a", delay: "0s", rate: "0.10" },
+	{ className: "hero-stars-1-b", delay: "-1s", rate: "0.10" },
+	{ className: "hero-stars-1-c", delay: "-2s", rate: "0.10" },
+	{ className: "hero-stars-1-d", delay: "-3s", rate: "0.10" },
+	{ className: "hero-stars-2-a", delay: "-0.5s", rate: "0.05" },
+	{ className: "hero-stars-2-b", delay: "-2.5s", rate: "0.05" },
+];
+
+const CLOUD_PARALLAX_RATE = "0.30";
 ---
 
 <section
@@ -42,34 +68,25 @@ const subtitleMargin = theme.detailsBelowFold
 	style={heroStyle}
 	data-hero
 >
-	{theme.stars && (
-	<>
+	{theme.stars &&
+	starLayers.map((layer) => (
 		<div
-			class="hero-stars hero-stars-1-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: 0s"
-		/>
-		<div
-			class="hero-stars hero-stars-1-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: -1s"
-		/>
-		<div
-			class="hero-stars hero-stars-1-c pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: -2s"
-		/>
-		<div
-			class="hero-stars hero-stars-1-d pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: -3s"
-		/>
-		<div
-			class="hero-stars hero-stars-2-a pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: -0.5s"
-		/>
-		<div
-			class="hero-stars hero-stars-2-b pointer-events-none absolute inset-0 motion-safe:animate-twinkle"
-			style="animation-delay: -2.5s"
-		/>
-	</>
-)}
+			class="hero-sky-layer pointer-events-none absolute inset-0 motion-safe:animate-star-scroll"
+			data-parallax={layer.rate}
+			aria-hidden="true"
+		>
+			<div class="hero-sky-strip" data-parallax-strip>
+				{[...Array(SKY_COPIES)].map(() => (
+					<div class="hero-sky-section">
+						<div
+							class={`hero-stars ${layer.className} motion-safe:animate-twinkle`}
+							style={`animation-delay: ${layer.delay};`}
+						/>
+					</div>
+				))}
+			</div>
+		</div>
+	))}
 
 	{theme.balloons && (
 	<>
@@ -85,14 +102,17 @@ const subtitleMargin = theme.detailsBelowFold
 	{theme.clouds && (
 	<>
 		{/* Distant layer: small, slow, high in the sky. Sits in the top
-		   strip so it never crosses the centered text block. */}
+		   strip so it never crosses the centered text block. The outer
+		   element carries the CSS ambient drift; the inner strip carries
+		   the island's player-driven parallax. */}
 		<div
-			class="hero-clouds pointer-events-none absolute inset-x-0 top-0 z-0 h-[26%] motion-safe:animate-cloud-scroll-slow motion-reduce:hidden"
+			class="hero-sky-layer pointer-events-none absolute inset-x-0 top-0 z-0 h-[26%] motion-safe:animate-cloud-scroll-slow motion-reduce:hidden"
+			data-parallax={CLOUD_PARALLAX_RATE}
 			aria-hidden="true"
 		>
-			<div class="hero-clouds-strip">
-				{[...Array(2)].map(() => (
-					<div class="hero-clouds-section">
+			<div class="hero-sky-strip" data-parallax-strip>
+				{[...Array(SKY_COPIES)].map(() => (
+					<div class="hero-sky-section">
 						<img
 							src="/clouds/cloud-small.svg"
 							alt=""
@@ -360,21 +380,21 @@ const subtitleMargin = theme.detailsBelowFold
 		78vw 96vh currentColor;
 }
 
-/* Pixel-art cloud parallax: one strip scrolls horizontally across the
-	   hero on a seamless loop. The strip is two copies of the same cloud
-	   arrangement; animating translateX(0) -> translateX(-50%) makes the
-	   second copy perfectly replace the first when the loop restarts. The
-	   strip sits at z-index 0; .hero-content wraps the text at z-10 so the
-	   text always paints on top of the clouds. */
-.hero-clouds-strip {
+/* Sky parallax. Each layer is two nested elements: the outer element runs the
+   ambient CSS drift (seamless because it translates exactly one section),
+   while the inner strip is translated by the island for player parallax. The
+   strip carries three identical copies so it stays covered while both
+   transforms are applied at once. The strip sits at z-index 0; .hero-content
+   wraps the text at z-10 so the text always paints on top. */
+.hero-sky-strip {
 	display: flex;
-	width: 200%;
+	width: 300%;
 	height: 100%;
 	image-rendering: pixelated;
 	will-change: transform;
 }
-.hero-clouds-section {
-	flex: 1 0 50%;
+.hero-sky-section {
+	flex: 1 0 33.3333%;
 	position: relative;
 	height: 100%;
 }
@@ -384,43 +404,43 @@ const subtitleMargin = theme.detailsBelowFold
 }
 
 /* Small (distant) clouds: scattered high in the sky */
-.hero-clouds-section .hero-cloud-1 {
+.hero-sky-section .hero-cloud-1 {
 	top: 8%;
 	left: 4%;
 	width: 90px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-2 {
+.hero-sky-section .hero-cloud-2 {
 	top: 22%;
 	left: 22%;
 	width: 70px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-3 {
+.hero-sky-section .hero-cloud-3 {
 	top: 4%;
 	left: 38%;
 	width: 110px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-4 {
+.hero-sky-section .hero-cloud-4 {
 	top: 28%;
 	left: 52%;
 	width: 80px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-5 {
+.hero-sky-section .hero-cloud-5 {
 	top: 10%;
 	left: 66%;
 	width: 100px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-6 {
+.hero-sky-section .hero-cloud-6 {
 	top: 30%;
 	left: 80%;
 	width: 75px;
 	height: auto;
 }
-.hero-clouds-section .hero-cloud-7 {
+.hero-sky-section .hero-cloud-7 {
 	top: 14%;
 	left: 92%;
 	width: 85px;

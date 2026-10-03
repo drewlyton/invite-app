@@ -110,6 +110,79 @@ export default function RunnerGame({
 		let pointerJump = false;
 		const held = new Set<string>();
 
+		// --- Player-driven sky parallax ------------------------------------
+		// Ambient drift stays a CSS animation on each layer's outer element, so
+		// the sky keeps moving while the game is idle and no rAF loop is running.
+		// Here we only ever write the inner strip's transform, and we accumulate
+		// the player's travel incrementally: recomputing from the absolute
+		// groundOffset would snap every layer the moment pixelScale changed on
+		// resize.
+		type ParallaxLayer = {
+			strip: HTMLElement;
+			rate: number;
+			period: number;
+			offset: number;
+		};
+
+		const heroHost =
+			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
+		let parallaxLayers: ParallaxLayer[] = [];
+		let prevGroundOffset = 0;
+
+		const applyParallax = (): void => {
+			for (const layer of parallaxLayers) {
+				layer.strip.style.transform = `translateX(${-layer.offset}px)`;
+			}
+		};
+
+		const measureParallax = (): void => {
+			if (reduced) {
+				parallaxLayers = [];
+				return;
+			}
+			// Preserve the current offsets across a resize; only the wrap period
+			// (one section width) is re-measured.
+			const offsets = new Map(
+				parallaxLayers.map((layer) => [layer.strip, layer.offset]),
+			);
+			const next: ParallaxLayer[] = [];
+			for (const el of heroHost.querySelectorAll<HTMLElement>(
+				"[data-parallax]",
+			)) {
+				const rate = Number.parseFloat(el.dataset.parallax ?? "");
+				if (!Number.isFinite(rate) || rate <= 0) continue;
+				const strip = el.querySelector<HTMLElement>("[data-parallax-strip]");
+				const section = strip?.firstElementChild;
+				if (!strip || !(section instanceof HTMLElement)) continue;
+				// One section is the wrap period: the strip is identical every
+				// section, so wrapping there cannot produce a seam.
+				const period = section.getBoundingClientRect().width;
+				if (period <= 0) continue;
+				next.push({ strip, rate, period, offset: offsets.get(strip) ?? 0 });
+			}
+			parallaxLayers = next;
+			applyParallax();
+		};
+
+		const advanceParallax = (
+			groundOffset: number,
+			pixelScale: number,
+		): void => {
+			const delta = (groundOffset - prevGroundOffset) * pixelScale;
+			for (const layer of parallaxLayers) {
+				const raw = layer.offset + delta * layer.rate;
+				layer.offset = ((raw % layer.period) + layer.period) % layer.period;
+			}
+			prevGroundOffset = groundOffset;
+			applyParallax();
+		};
+
+		const resetParallax = (): void => {
+			prevGroundOffset = 0;
+			for (const layer of parallaxLayers) layer.offset = 0;
+			applyParallax();
+		};
+
 		const applyCanvasSize = (): void => {
 			canvas.width = Math.round(cssWidth * dpr);
 			canvas.height = Math.round(bandHeight * dpr);
@@ -178,6 +251,15 @@ export default function RunnerGame({
 				pointerJump = false;
 				accumulator -= FIXED_DT;
 			}
+
+			const state = view(game);
+			if (state.phase === "running") {
+				advanceParallax(state.groundOffset, state.pixelScale);
+			} else {
+				// Hold the offset when the run ends. Syncing the baseline means a
+				// restart (which zeroes groundOffset) cannot produce a jump.
+				prevGroundOffset = state.groundOffset;
+			}
 			draw();
 
 			if (view(game).phase === "running" && !paused && inView) {
@@ -220,6 +302,7 @@ export default function RunnerGame({
 			if (current === "dead") {
 				game = restart(game);
 				setPhase("running");
+				resetParallax();
 				startLoop();
 				return;
 			}
@@ -239,6 +322,7 @@ export default function RunnerGame({
 			applyCanvasSize();
 			// Geometry is simulation state; resize keeps the run alive.
 			game = resize(game, { bandHeight, canvasWidth: cssWidth });
+			measureParallax();
 			draw();
 		};
 
@@ -277,8 +361,7 @@ export default function RunnerGame({
 			held.clear();
 		};
 
-		const tapTarget =
-			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
+		const tapTarget = heroHost;
 		let downX = 0;
 		let downY = 0;
 		let downAt = Number.NEGATIVE_INFINITY;
@@ -326,6 +409,7 @@ export default function RunnerGame({
 
 		applyCanvasSize();
 		draw();
+		measureParallax();
 
 		const resizeObserver = new ResizeObserver(onResize);
 		resizeObserver.observe(band);
