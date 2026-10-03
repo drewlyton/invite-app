@@ -1,0 +1,766 @@
+---
+// THROWAWAY — delete before deploy. Scratch debug page for the hero runner
+// prototype (steps 1-2 of docs/hero-runner-game.md). Not wired into any theme,
+// not linked from anywhere, placeholder rectangles only.
+//
+// The frontmatter runs the Verification assertions server-side so that
+// `curl http://localhost:4321/scratch/runner-debug` prints real pass/fail HTML
+// with no browser involved. The client script at the bottom of the body drives
+// the interactive canvas and accepts ?gravity=&jump=&maxSpeed= knobs.
+
+import {
+	AIR_TIME,
+	createGame,
+	type Game,
+	type ObstacleKind,
+	start,
+	step,
+	TUNING,
+	view,
+} from "../../lib/runner";
+
+const DT = 1 / 120;
+
+// Derived from the real tuning constants, never hand-copied. Jump-only play:
+// the standing hitbox spans [STANDING_HITBOX_BOTTOM, STANDING_HITBOX_TOP] above
+// the ground, and the apex puts the hitbox bottom at APEX_HITBOX_BOTTOM.
+const STANDING_HITBOX_BOTTOM = TUNING.playerHeight * TUNING.hitboxInset; // 4.4
+const STANDING_HITBOX_TOP = TUNING.playerHeight - STANDING_HITBOX_BOTTOM; // 17.6
+const APEX_FEET =
+	(TUNING.jumpVelocity * TUNING.jumpVelocity) / (2 * TUNING.gravity);
+const APEX_HITBOX_BOTTOM = APEX_FEET + STANDING_HITBOX_BOTTOM;
+
+type Assertion = { name: string; pass: boolean; detail: string };
+
+// --- measured player physics ------------------------------------------------
+
+function measureAirTime(): number {
+	let g = start(createGame({ seed: 1, bandHeight: 190, canvasWidth: 640 }));
+	g = step(g, DT, { jump: false });
+	let frames = 0;
+	g = step(g, DT, { jump: true });
+	while (view(g).player.airborne && frames < 10000) {
+		g = step(g, DT, { jump: false });
+		frames++;
+	}
+	return frames * DT;
+}
+
+// --- 1. purity / determinism ------------------------------------------------
+
+function purityTest(): Assertion {
+	const seed = 12345;
+	let a = start(createGame({ seed, bandHeight: 190, canvasWidth: 640 }));
+	let b = start(createGame({ seed, bandHeight: 190, canvasWidth: 640 }));
+	let deterministic = true;
+	let mutated = false;
+	let branchStable = true;
+	for (let i = 0; i < 4000; i++) {
+		const input = { jump: i % 37 === 0 };
+		const beforeA = JSON.stringify(a);
+		const a2 = step(a, DT, input);
+		if (JSON.stringify(a) !== beforeA) mutated = true;
+		const b2 = step(b, DT, input);
+		if (JSON.stringify(a2) !== JSON.stringify(b2)) deterministic = false;
+		const a2again = step(a, DT, input);
+		if (JSON.stringify(a2) !== JSON.stringify(a2again)) branchStable = false;
+		a = a2;
+		b = b2;
+	}
+	return {
+		name: "1. Purity / determinism",
+		pass: deterministic && !mutated && branchStable,
+		detail: `same seed + same inputs => identical full state: ${deterministic}; step mutated its argument: ${mutated}; replaying a saved state branches identically: ${branchStable} (4000 steps, full-state JSON hash)`,
+	};
+}
+
+// --- 2. spacing -------------------------------------------------------------
+
+type SpawnRecord = {
+	kind: ObstacleKind;
+	width: number;
+	gap: number;
+	arrivalDistance: number;
+	checked: boolean;
+	slack: number;
+};
+
+function spacingTest(): Assertion {
+	let g = start(createGame({ seed: 7, bandHeight: 190, canvasWidth: 640 }));
+	let prevGroundOffset = view(g).groundOffset;
+	let spawnX = 0;
+	let lastMaxX = Number.NEGATIVE_INFINITY;
+	let lastSpawnDistance: number | null = null;
+	const records: SpawnRecord[] = [];
+	let checkIndex = 0;
+	let maxSpeedSeen = 0;
+	const target = 10000;
+	const maxSteps = 3_000_000;
+	let steps = 0;
+
+	while (
+		checkIndex < target &&
+		records.length < target * 2 &&
+		steps < maxSteps
+	) {
+		g = step(g, DT, { jump: false });
+		const s = view(g);
+		const speed = (s.groundOffset - prevGroundOffset) / DT;
+		if (speed > maxSpeedSeen) maxSpeedSeen = speed;
+
+		let maxX = Number.NEGATIVE_INFINITY;
+		let newest: (typeof s.obstacles)[number] | null = null;
+		for (const o of s.obstacles) {
+			if (o.x > maxX) {
+				maxX = o.x;
+				newest = o;
+			}
+		}
+		// Obstacles only move left, so the max x dips on removal and jumps on
+		// spawn; a rise means a new obstacle entered at the spawn point.
+		if (newest && maxX > lastMaxX + 1e-9) {
+			spawnX = maxX;
+			if (lastSpawnDistance !== null) {
+				records.push({
+					kind: newest.kind,
+					width: newest.w,
+					gap: s.groundOffset - lastSpawnDistance,
+					arrivalDistance: s.groundOffset + (spawnX - s.player.x),
+					checked: false,
+					slack: Number.POSITIVE_INFINITY,
+				});
+			}
+			lastSpawnDistance = s.groundOffset;
+		}
+		lastMaxX = maxX;
+
+		// Arrival distances are monotonic, so only the oldest unchecked record
+		// can come due.
+		while (checkIndex < records.length) {
+			const r = records[checkIndex];
+			if (s.groundOffset < r.arrivalDistance) break;
+			r.checked = true;
+			r.slack = r.gap - (speed * AIR_TIME + r.width);
+			checkIndex++;
+		}
+		prevGroundOffset = s.groundOffset;
+		steps++;
+	}
+
+	let minSlack = Number.POSITIVE_INFINITY;
+	let worst: SpawnRecord | null = null;
+	for (const r of records) {
+		if (r.checked && r.slack < minSlack) {
+			minSlack = r.slack;
+			worst = r;
+		}
+	}
+	const tolerance = 0.5; // finite-difference speed measurement error
+	const pass = checkIndex >= target && minSlack >= -tolerance;
+	return {
+		name: "2. Spacing",
+		pass,
+		detail: `${checkIndex} spawns checked (target ${target}); min slack ${minSlack.toFixed(4)} units vs gap >= speedAtArrival * AIR_TIME(${AIR_TIME.toFixed(4)}) + obstacleWidth (tolerance ${tolerance}). Worst case: ${worst ? `${worst.kind} w=${worst.width} gap=${worst.gap.toFixed(3)}` : "n/a"}. Max speed observed ${maxSpeedSeen.toFixed(2)} u/s over ${steps} steps.`,
+	};
+}
+
+// --- 3. warning time --------------------------------------------------------
+
+function warningTest(maxSpeed: number): Assertion {
+	// canvasWidth=390 is the breakpoint: below it the MIN_WORLD_WIDTH floor
+	// cannot hold at pixelScaleMin=1.5. worldWidth is exactly MIN_WORLD_WIDTH.
+	const s = view(createGame({ bandHeight: 190, canvasWidth: 390 }));
+	const tWarn = (s.worldWidth - s.player.x - s.player.w) / maxSpeed;
+	const budget = TUNING.reactionBudget + AIR_TIME;
+	const maxPassing = (s.worldWidth - s.player.x - s.player.w) / budget;
+	return {
+		name: "3. Warning time (390px breakpoint)",
+		pass: tWarn >= budget,
+		detail: `canvasWidth=390, bandHeight=190 => pixelScale=${s.pixelScale.toFixed(3)}, worldWidth=${s.worldWidth.toFixed(1)} (= MIN_WORLD_WIDTH ${TUNING.minWorldWidth}); playerX=${s.player.x}, playerW=${s.player.w}; at measured max speed ${maxSpeed.toFixed(2)} => tWarn=${tWarn.toFixed(4)}s >= reactionBudget(${TUNING.reactionBudget}) + airTime(${AIR_TIME.toFixed(4)}) = ${budget.toFixed(4)}s, margin ${(tWarn - budget).toFixed(4)}s. Largest passing maxSpeed at this airTime: ${maxPassing.toFixed(2)} u/s.`,
+	};
+}
+
+function geometryCaveat(maxSpeed: number): Assertion {
+	// Not one of the required assertions. Guards the breakpoint where the width
+	// floor stops holding: pixelScale = min(heightTerm, widthTerm) is capped by
+	// canvasWidth/MIN_WORLD_WIDTH, so worldWidth >= MIN_WORLD_WIDTH — but only
+	// while pixelScaleMin <= canvasWidth/MIN_WORLD_WIDTH, i.e. canvasWidth >= 390.
+	const s = view(createGame({ bandHeight: 190, canvasWidth: 390 }));
+	const tWarn = (s.worldWidth - s.player.x - s.player.w) / maxSpeed;
+	const budget = TUNING.reactionBudget + AIR_TIME;
+	const floorHolds = s.worldWidth >= TUNING.minWorldWidth;
+	const warnHolds = tWarn >= budget;
+	return {
+		name: "Caveat. Width floor + warning margin at the 390px breakpoint",
+		pass: floorHolds,
+		detail: `pixelScale=${s.pixelScale.toFixed(3)} (min of height term 190/${TUNING.targetWorldHeight}=${(190 / TUNING.targetWorldHeight).toFixed(2)}, width term 390/${TUNING.minWorldWidth}=${(390 / TUNING.minWorldWidth).toFixed(2)}) => worldWidth=${s.worldWidth.toFixed(1)} >= ${TUNING.minWorldWidth}: ${floorHolds}. tWarn=${tWarn.toFixed(4)}s >= ${budget.toFixed(4)}s: ${warnHolds}. Below canvasWidth = MIN_WORLD_WIDTH * PIXEL_SCALE_MIN = ${TUNING.minWorldWidth * TUNING.pixelScaleMin}px the floor cannot hold at pixelScaleMin=${TUNING.pixelScaleMin}.`,
+	};
+}
+
+// --- 4. clearability --------------------------------------------------------
+
+type FoundObstacle = {
+	g: Game;
+	kind: ObstacleKind;
+	w: number;
+	h: number;
+	bottomClear: number;
+	topClear: number;
+};
+
+function firstObstacle(seed: number): FoundObstacle | null {
+	let g = start(createGame({ seed, bandHeight: 190, canvasWidth: 640 }));
+	g = step(g, DT, { jump: false });
+	const s = view(g);
+	const o = s.obstacles[0];
+	if (!o) return null;
+	return {
+		g,
+		kind: o.kind,
+		w: o.w,
+		h: o.h,
+		bottomClear: s.groundY - (o.y + o.h),
+		topClear: s.groundY - o.y,
+	};
+}
+
+/**
+ * "A jump started on the last frame before contact" is ambiguous. Read
+ * literally (jump on contactFrame - 1) it can never clear a ground obstacle:
+ * the inset hitbox bottom starts 4.4 units above the ground while a ground
+ * obstacle is 10-16 units tall, so the player needs a few frames of rise before
+ * the boxes would overlap. We therefore define it as the *latest frame at which
+ * a jump still clears* — the point of no return. The assertion is that this
+ * frame exists, is strictly before the contact frame, and that jumping one
+ * frame later collides (so the boundary is real). The literal contactFrame-1
+ * result is reported too.
+ *
+ * Jump-only classification (matches OBSTACLE_SHAPES in runner.ts):
+ *   must jump  => bottomClear < standingHitboxTop(17.6)
+ *   run under  => bottomClear > standingHitboxTop(17.6)
+ * Run-under kinds are viable with no input at all, so they are checked by
+ * surviving an empty-input run rather than by finding a jump frame.
+ */
+function clearabilityFor(target: ObstacleKind, minWidth = 0): Assertion {
+	for (let seed = 1; seed < 8000; seed++) {
+		const found = firstObstacle(seed);
+		if (!found || found.kind !== target || found.w < minWidth) continue;
+		const { g, w, h, bottomClear, topClear } = found;
+		const mustJump = bottomClear < STANDING_HITBOX_TOP;
+		const derivation = `clearance ${bottomClear}-${topClear}; standing hitbox ${STANDING_HITBOX_BOTTOM}-${STANDING_HITBOX_TOP}, apex hitbox bottom ${APEX_HITBOX_BOTTOM.toFixed(2)}`;
+
+		if (!mustJump) {
+			let s = g;
+			let survived = true;
+			for (let i = 0; i < 5000; i++) {
+				s = step(s, DT, { jump: false });
+				const sv = view(s);
+				if (sv.phase === "dead") {
+					survived = false;
+					break;
+				}
+				const o = sv.obstacles.find((x) => x.kind === target);
+				if (!o || o.x + o.w < sv.player.x) break;
+			}
+			return {
+				name: `4. Clearability (${target})`,
+				pass: survived,
+				detail: `seed=${seed}, obstacle w=${w} h=${h}; ${derivation}; bottomClear ${bottomClear} > standingHitboxTop ${STANDING_HITBOX_TOP} => run under; survived with no input: ${survived}.`,
+			};
+		}
+
+		// contact frame: first frame the AABBs overlap with no input at all
+		let contact = -1;
+		let s = g;
+		for (let i = 0; i < 5000; i++) {
+			s = step(s, DT, { jump: false });
+			if (view(s).phase === "dead") {
+				contact = i + 1;
+				break;
+			}
+		}
+		if (contact < 0) continue;
+
+		let latestClear = -1;
+		let literalClears = false;
+		for (let k = contact - 1; k >= 0; k--) {
+			let t = g;
+			for (let i = 0; i < k; i++) {
+				t = step(t, DT, { jump: false });
+			}
+			t = step(t, DT, { jump: true });
+			let cleared = true;
+			for (let i = 0; i < 600; i++) {
+				t = step(t, DT, { jump: false });
+				const tv = view(t);
+				if (tv.phase === "dead") {
+					cleared = false;
+					break;
+				}
+				const o = tv.obstacles.find((x) => x.kind === target);
+				if (!o || o.x + o.w < tv.player.x) break;
+			}
+			if (cleared && latestClear < 0) latestClear = k;
+			if (k === contact - 1) literalClears = cleared;
+		}
+
+		const margin = latestClear >= 0 ? (contact - latestClear) * DT : 0;
+		return {
+			name: `4. Clearability (${target})`,
+			pass: latestClear >= 0 && latestClear < contact,
+			detail: `seed=${seed}, obstacle w=${w} h=${h}; ${derivation}; bottomClear ${bottomClear} < standingHitboxTop ${STANDING_HITBOX_TOP} => must jump; topClear ${topClear} < apex hitbox bottom ${APEX_HITBOX_BOTTOM.toFixed(2)} => ${topClear < APEX_HITBOX_BOTTOM}; contact frame=${contact}, latest clearing jump frame=${latestClear} => margin ${margin.toFixed(4)}s (${contact - latestClear} frames). Literal jump on contactFrame-1 clears: ${literalClears}.`,
+		};
+	}
+	return {
+		name: `4. Clearability (${target})`,
+		pass: false,
+		detail: `no seed produced a ${target}${minWidth ? ` of width >= ${minWidth}` : ""} as the first spawn`,
+	};
+}
+
+// --- run --------------------------------------------------------------------
+
+const airTime = measureAirTime();
+const purity = purityTest();
+const spacing = spacingTest();
+// Saturate the speed ramp to measure max speed with a dead-but-still-scrolling
+// world (the sim keeps integrating after a collision; see runner.ts).
+let speedGame = start(
+	createGame({ seed: 3, bandHeight: 190, canvasWidth: 640 }),
+);
+let prevOffset = view(speedGame).groundOffset;
+let maxSpeed = 0;
+for (let i = 0; i < 300000; i++) {
+	speedGame = step(speedGame, DT, { jump: false });
+	const s = view(speedGame);
+	const speed = (s.groundOffset - prevOffset) / DT;
+	if (speed > maxSpeed) maxSpeed = speed;
+	prevOffset = s.groundOffset;
+}
+
+const clearabilityKinds: { kind: ObstacleKind; minWidth?: number }[] = [
+	{ kind: "ground-narrow" },
+	{ kind: "ground-wide" },
+	{ kind: "ground-cluster", minWidth: 9 }, // widest cluster variant
+	{ kind: "flying-low" },
+	{ kind: "flying-mid" },
+	{ kind: "flying-high" },
+];
+const clearability = clearabilityKinds.map(({ kind, minWidth }) =>
+	clearabilityFor(kind, minWidth),
+);
+
+const warning = warningTest(maxSpeed);
+const requiredAssertions: Assertion[] = [
+	purity,
+	spacing,
+	warning,
+	...clearability,
+];
+const caveat = geometryCaveat(maxSpeed);
+const assertions: Assertion[] = [...requiredAssertions, caveat];
+const allPass = requiredAssertions.every((a) => a.pass);
+
+// Tuning readout, computed from the real constants (no hand-copied mirror).
+const tuningRows: [string, string][] = [
+	["targetWorldHeight", String(TUNING.targetWorldHeight)],
+	["minWorldWidth", String(TUNING.minWorldWidth)],
+	["pixelScaleMin / Max", `${TUNING.pixelScaleMin} / ${TUNING.pixelScaleMax}`],
+	["groundMargin", String(TUNING.groundMargin)],
+	["playerWidth x height", `${TUNING.playerWidth} x ${TUNING.playerHeight}`],
+	["playerX", String(TUNING.playerX)],
+	["hitboxInset", `${TUNING.hitboxInset} per side`],
+	["gravity", `${TUNING.gravity} u/s^2`],
+	["jumpVelocity", `${TUNING.jumpVelocity} u/s`],
+	["nominal airtime (AIR_TIME)", `${AIR_TIME.toFixed(4)} s`],
+	[
+		"apex feet / hitbox bottom",
+		`${APEX_FEET.toFixed(2)} / ${APEX_HITBOX_BOTTOM.toFixed(2)} u`,
+	],
+	[
+		"measured airtime",
+		`${airTime.toFixed(4)} s (discrete, ${DT.toFixed(4)}s steps)`,
+	],
+	[
+		"startSpeed / maxSpeed",
+		`${TUNING.startSpeed} / ${maxSpeed.toFixed(2)} u/s`,
+	],
+	[
+		"speedRamp",
+		`${TUNING.speedRamp} (u/s) per unit (max at ${((TUNING.maxSpeed - TUNING.startSpeed) / TUNING.speedRamp).toFixed(0)} units)`,
+	],
+	["scoreUnit / spawnMargin", `${TUNING.scoreUnit} / ${TUNING.spawnMargin}`],
+	[
+		"gapJitterMax / reactionBudget",
+		`${TUNING.gapJitterMax} / ${TUNING.reactionBudget} s`,
+	],
+	[
+		"standing hitbox (clearance)",
+		`${STANDING_HITBOX_BOTTOM} - ${STANDING_HITBOX_TOP}`,
+	],
+	["obstacle widths (chosen)", "narrow 4, wide 10, cluster 3x(1-3), flying 6"],
+];
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="robots" content="noindex">
+		<title>THROWAWAY runner prototype debug</title>
+		<style>
+		body {
+			margin: 0;
+			padding: 16px;
+			font:
+				13px / 1.5 ui-monospace,
+				monospace;
+			background: #fafaf9;
+			color: #1c1917;
+		}
+		h1 {
+			font-size: 15px;
+			margin: 0 0 4px;
+		}
+		.banner {
+			background: #fef3c7;
+			border: 1px solid #f59e0b;
+			padding: 8px 10px;
+			margin-bottom: 12px;
+		}
+		table {
+			border-collapse: collapse;
+			width: 100%;
+			margin-bottom: 16px;
+		}
+		th,
+		td {
+			border: 1px solid #d6d3d1;
+			padding: 5px 7px;
+			text-align: left;
+			vertical-align: top;
+		}
+		.pass {
+			color: #166534;
+			font-weight: 700;
+		}
+		.fail {
+			color: #b91c1c;
+			font-weight: 700;
+		}
+		.two {
+			display: flex;
+			gap: 16px;
+			flex-wrap: wrap;
+			align-items: flex-start;
+		}
+		.runner-wrap {
+			flex: 1 1 520px;
+			min-width: 320px;
+		}
+		canvas {
+			display: block;
+			width: 100%;
+			background: #fff;
+			border: 1px solid #d6d3d1;
+			outline: none;
+			cursor: pointer;
+			image-rendering: pixelated;
+		}
+		canvas:focus {
+			border-color: #1c1917;
+		}
+		pre {
+			flex: 0 1 340px;
+			margin: 0;
+			padding: 8px;
+			background: #fff;
+			border: 1px solid #d6d3d1;
+			overflow: auto;
+		}
+		.hint {
+			margin: 6px 0 0;
+			color: #57534e;
+		}
+		</style>
+	</head>
+	<body>
+		<div class="banner">
+			<strong>THROWAWAY debug page — delete before deploy.</strong>
+			Prototype steps 1-2 only. No theme wiring, no sprites (placeholder
+			rectangles), no a11y work. Jump-only: one button, no duck. Server-side
+			assertions below; interactive canvas for tuning jump feel and spawn rhythm
+			by hand. Knobs: <code>?gravity=&amp;jump=&amp;maxSpeed=</code>
+			(<code>jump</code>
+			is magnitude; default 1384 / 353 / 280).
+		</div>
+
+		<h1>Verification assertions (server-side, no browser)</h1>
+		<table>
+			<thead>
+				<tr>
+					<th>Assertion</th>
+					<th>Result</th>
+					<th>Observed output</th>
+				</tr>
+			</thead>
+			<tbody>
+				{assertions.map((a) => (
+	<tr>
+		<td>{a.name}</td>
+		<td class={a.pass ? "pass" : "fail"}>{a.pass ? "PASS" : "FAIL"}</td>
+		<td>{a.detail}</td>
+	</tr>
+))}
+			</tbody>
+		</table>
+		<p>
+			<strong
+				>Overall (purity + spacing + warning + per-kind clearability):</strong
+			>
+			<span class={allPass ? "pass" : "fail"}>{allPass ? "PASS" : "FAIL"}</span>
+		</p>
+
+		<h1>Interactive canvas (tune by hand)</h1>
+		<div class="two">
+			<div class="runner-wrap">
+				<canvas
+					id="runner-canvas"
+					tabindex="0"
+					aria-label="Runner prototype debug canvas"
+				></canvas>
+				<p class="hint">
+					Focus the canvas, then Space / ArrowUp / W to jump. Space or Enter
+					restarts when dead. Click/tap starts or restarts. No duck — jump is
+					the only move.
+				</p>
+			</div>
+			<pre id="runner-readout">loading…</pre>
+		</div>
+
+		<h1>Tuning constants (read from runner.ts)</h1>
+		<table>
+			<tbody>
+				{tuningRows.map(([k, v]) => (
+	<tr>
+		<td>{k}</td>
+		<td>{v}</td>
+	</tr>
+))}
+			</tbody>
+		</table>
+
+		<script>
+		import {
+			createGame,
+			type Game,
+			hitboxes,
+			restart,
+			start,
+			step,
+			TUNING,
+			type Tuning,
+			view,
+		} from "../../lib/runner";
+
+		const BAND_HEIGHT = 190;
+		const FIXED_DT = 1 / 120;
+		const SEED = 20251002;
+
+		// Optional per-run physics knobs, so the human can tune by feel without a
+		// rebuild: ?gravity=1384&jump=353&maxSpeed=280 (jump is a magnitude).
+		const params = new URLSearchParams(window.location.search);
+		function numericParam(name: string): number | undefined {
+			const raw = params.get(name);
+			if (raw === null || raw.trim() === "") return undefined;
+			const value = Number(raw);
+			return Number.isFinite(value) ? value : undefined;
+		}
+		const tuningOverride: Partial<Tuning> = {};
+		const gravityParam = numericParam("gravity");
+		if (gravityParam !== undefined) tuningOverride.gravity = gravityParam;
+		const jumpParam = numericParam("jump");
+		if (jumpParam !== undefined)
+			tuningOverride.jumpVelocity = -Math.abs(jumpParam);
+		const maxSpeedParam = numericParam("maxSpeed");
+		if (maxSpeedParam !== undefined) tuningOverride.maxSpeed = maxSpeedParam;
+		const activeTuning: Tuning = { ...TUNING, ...tuningOverride };
+
+		const canvas = document.getElementById(
+			"runner-canvas",
+		) as HTMLCanvasElement | null;
+		const readout = document.getElementById("runner-readout") as HTMLElement;
+		if (!canvas || !readout) throw new Error("debug page elements missing");
+		const ctx = canvas.getContext("2d");
+		if (!ctx) throw new Error("2d context unavailable");
+
+		let game: Game = createGame({
+			bandHeight: BAND_HEIGHT,
+			canvasWidth: 640,
+			seed: SEED,
+			tuning: tuningOverride,
+		});
+		let cssWidth = 640;
+		const held = new Set<string>();
+		let accumulator = 0;
+		let lastTime = 0;
+		let liveSpeed = 0;
+
+		function input() {
+			return {
+				jump: held.has("Space") || held.has("ArrowUp") || held.has("KeyW"),
+			};
+		}
+
+		function resize(): void {
+			if (!canvas || !ctx) return;
+			const rect = canvas.getBoundingClientRect();
+			cssWidth = Math.max(1, Math.round(rect.width));
+			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			canvas.width = Math.round(cssWidth * dpr);
+			canvas.height = Math.round(BAND_HEIGHT * dpr);
+			canvas.style.height = `${BAND_HEIGHT}px`;
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			// NOTE: the frozen public surface has no resize() seam, so this
+			// recreates the game and resets the run (spec wants the run to
+			// continue; flagged in the report).
+			game = createGame({
+				bandHeight: BAND_HEIGHT,
+				canvasWidth: cssWidth,
+				seed: SEED,
+				highScore: view(game).highScore,
+				tuning: tuningOverride,
+			});
+			accumulator = 0;
+			draw();
+		}
+
+		function pad(n: number): string {
+			return String(Math.max(0, Math.floor(n))).padStart(5, "0");
+		}
+
+		function draw(): void {
+			if (!ctx) return;
+			const s = view(game);
+			const px = s.pixelScale;
+			ctx.fillStyle = "#ffffff";
+			ctx.fillRect(0, 0, cssWidth, BAND_HEIGHT);
+
+			// ground dashes (scroll with groundOffset)
+			ctx.fillStyle = "#d6d3d1";
+			const tile = 16;
+			const dash = 6;
+			const offset = ((s.groundOffset % tile) + tile) % tile;
+			for (let x = -offset; x < s.worldWidth + tile; x += tile) {
+				ctx.fillRect(x * px, s.groundY * px, dash * px, 2);
+			}
+
+			// obstacles
+			ctx.fillStyle = "#a8a29e";
+			for (const o of s.obstacles) {
+				ctx.fillRect(o.x * px, o.y * px, o.w * px, o.h * px);
+			}
+
+			// player
+			ctx.fillStyle = s.phase === "dead" ? "#dc2626" : "#57534e";
+			ctx.fillRect(
+				s.player.x * px,
+				s.player.y * px,
+				s.player.w * px,
+				s.player.h * px,
+			);
+
+			// collision-debug hitboxes
+			ctx.strokeStyle = "rgba(220,38,38,0.85)";
+			ctx.lineWidth = 1;
+			for (const r of hitboxes(game)) {
+				ctx.strokeRect(
+					Math.round(r.x * px) + 0.5,
+					Math.round(r.y * px) + 0.5,
+					Math.round(r.w * px),
+					Math.round(r.h * px),
+				);
+			}
+
+			// arcade score HUD, on canvas so nothing re-renders per frame
+			ctx.fillStyle = "#1c1917";
+			ctx.font = "12px ui-monospace, monospace";
+			ctx.textAlign = "right";
+			ctx.fillText(
+				`HI ${pad(s.highScore)}   ${pad(s.score)}`,
+				cssWidth - 6,
+				15,
+			);
+			ctx.textAlign = "left";
+
+			readout.textContent = [
+				`phase        ${s.phase}`,
+				`score        ${s.score}  (hi ${s.highScore})`,
+				`distance     ${s.groundOffset.toFixed(1)} u`,
+				`speed        ${liveSpeed.toFixed(1)} u/s`,
+				`gravity      ${activeTuning.gravity} u/s^2`,
+				`jump         ${activeTuning.jumpVelocity} u/s`,
+				`maxSpeed     ${activeTuning.maxSpeed} u/s`,
+				`pixelScale   ${s.pixelScale.toFixed(3)}`,
+				`world        ${s.worldWidth.toFixed(1)} x ${s.worldHeight.toFixed(1)} u`,
+				`groundY      ${s.groundY.toFixed(1)} u`,
+				`player       x=${s.player.x} y=${s.player.y.toFixed(1)} ${s.player.pose}${s.player.airborne ? " airborne" : ""}`,
+				`obstacles    ${s.obstacles.map((o) => `${o.kind}@${o.x.toFixed(0)}`).join(" ") || "-"}`,
+			].join("\n");
+		}
+
+		function frame(time: number): void {
+			if (!lastTime) lastTime = time;
+			let dt = (time - lastTime) / 1000;
+			lastTime = time;
+			if (dt > 0.25) dt = 0.25;
+			accumulator += dt;
+			const s0 = view(game);
+			if (s0.phase === "running") {
+				const frameInput = input();
+				while (accumulator >= FIXED_DT) {
+					const before = view(game).groundOffset;
+					game = step(game, FIXED_DT, frameInput);
+					liveSpeed = (view(game).groundOffset - before) / FIXED_DT;
+					accumulator -= FIXED_DT;
+				}
+			} else {
+				accumulator = 0;
+			}
+			draw();
+			requestAnimationFrame(frame);
+		}
+
+		function activate(): void {
+			const phase = view(game).phase;
+			if (phase === "idle") game = start(game);
+			else if (phase === "dead") game = restart(game);
+			canvas?.focus();
+		}
+
+		window.addEventListener("keydown", (e) => {
+			if (e.code === "Space" || e.code === "ArrowUp") {
+				e.preventDefault();
+			}
+			held.add(e.code);
+			if (e.code === "Space" || e.code === "Enter") {
+				const phase = view(game).phase;
+				if (phase === "idle" || phase === "dead") activate();
+			}
+		});
+		window.addEventListener("keyup", (e) => {
+			held.delete(e.code);
+		});
+		canvas.addEventListener("pointerdown", () => {
+			activate();
+		});
+		window.addEventListener("resize", () => {
+			resize();
+		});
+
+		resize();
+		requestAnimationFrame(frame);
+		</script>
+	</body>
+</html>
