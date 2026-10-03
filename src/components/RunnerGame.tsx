@@ -461,7 +461,7 @@ export default function RunnerGame({
 	return (
 		<div
 			ref={bandRef}
-			className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-stone-500 [@media(max-height:639px)]:hidden"
+			className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
 			tabIndex={interactive ? 0 : -1}
 			role="application"
 			aria-label="Birthday runner mini-game"

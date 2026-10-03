@@ -653,7 +653,15 @@ event, which is acceptable because `game-night-light` is this event's theme.
   because idle is already a static single draw.
 - Contrast: `#1c1917` body text must keep its ratio over the sprite colour.
   Verify the muted grey against white before picking it.
-- The game region is keyboard-operable, so focus must be visible.
+- The game region is keyboard-operable. An earlier revision gave it a visible focus
+  indicator, but because the band is full-width and flush with the bottom of the
+  viewport, only the ring's **top edge** ever rendered somewhere visible — a dashed
+  line floating above the game area that read as a rendering glitch. It was
+  **deliberately removed** in favour of no indicator at all, with `outline-none`
+  retained so the browser default ring does not appear in its place. Pressing Space
+  visibly starts the game, so a keyboard user still gets feedback from the game
+  itself. This is a knowing departure from the usual "focus must be visible" rule —
+  if the band's position or size ever changes, revisit it.
 
 ## Performance and lifecycle
 
