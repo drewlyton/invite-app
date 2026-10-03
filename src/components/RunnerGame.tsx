@@ -203,6 +203,9 @@ export default function RunnerGame({
 			}
 			lastTime = 0;
 			accumulator = 0;
+			// A keyup can be missed while paused or unfocused; a stranded held key
+			// would otherwise block every later jump.
+			held.clear();
 		};
 
 		const startLoop = (): void => {
@@ -270,6 +273,10 @@ export default function RunnerGame({
 			held.delete(event.code);
 		};
 
+		const onBlur = (): void => {
+			held.clear();
+		};
+
 		const tapTarget =
 			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
 		let downX = 0;
@@ -327,6 +334,7 @@ export default function RunnerGame({
 		if (!reduced) {
 			band.addEventListener("keydown", onKeyDown);
 			band.addEventListener("keyup", onKeyUp);
+			band.addEventListener("blur", onBlur);
 			tapTarget.addEventListener("pointerdown", onPointerDown);
 			tapTarget.addEventListener("pointerup", onPointerUp);
 			tapTarget.addEventListener("pointercancel", onPointerCancel);
@@ -343,6 +351,7 @@ export default function RunnerGame({
 			intersection?.disconnect();
 			band.removeEventListener("keydown", onKeyDown);
 			band.removeEventListener("keyup", onKeyUp);
+			band.removeEventListener("blur", onBlur);
 			tapTarget.removeEventListener("pointerdown", onPointerDown);
 			tapTarget.removeEventListener("pointerup", onPointerUp);
 			tapTarget.removeEventListener("pointercancel", onPointerCancel);
