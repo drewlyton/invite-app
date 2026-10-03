@@ -196,10 +196,26 @@ way:
 
 **Resize.** Geometry is simulation state, not a renderer concern (see
 [Module layout](#module-layout)). Call `resize(game, { bandHeight, canvasWidth })`,
-which recomputes `pixelScale` and the world size and **keeps the run alive**:
-obstacles are positioned in world units, so spacing and every fairness
-calculation are unaffected and only the size of the visible window changes.
-Redraw immediately; do not reset the run.
+which recomputes `pixelScale` and the world size and **keeps the run alive** —
+redraw immediately, do not reset the run.
+
+What is and is not invariant across a resize, since the implementation revealed
+this to be narrower than the sentence above first claimed:
+
+- **Horizontal positions, gaps, distance, score, and spawn counters are
+  untouched.** Obstacles live in world units, so the window changes and the run
+  does not.
+- **Vertical positions shift** by `ΔgroundY` so that clearances from the ground
+  line are preserved. "Only the visible window changes" is true horizontally
+  only.
+- **The already-scheduled next spawn is not exactly fairness-invariant.** Its gap
+  was solved with `travelDistance = worldWidth + spawnMargin − playerX`; if the
+  band *widens* mid-run, that obstacle's arrival distance grows and its
+  precomputed gap can fall a few units short of the constraint (narrowing is
+  conservative). At the current numbers ~200 extra world units ≈ +5 units of
+  required gap, usually masked by the gap jitter. Making it exact requires storing
+  the last spawn distance and re-solving on resize; do that if the resize case ever
+  becomes reachable in practice.
 
 ### Units and scaling
 
@@ -408,8 +424,13 @@ This is where the "don't break RSVP" requirement is won or lost.
 A window-level `keydown` listener would swallow space inside the RSVP form's
 inputs — someone typing their name gets a jumping character. Instead:
 
-- The game region is a **focusable** element (`tabindex="0"`) with an accessible
-  name and offscreen control instructions.
+- The game region is a **focusable** element with an accessible name and the
+  offscreen control instructions. The spec originally said `tabindex="0"`; in
+  practice the region carries `role="application"` (plain `aria-label` is invalid
+  on a generic focusable `div`) and the server emits `tabindex="-1"`, upgraded to
+  `0` on hydration, because the reduced-motion decision is only knowable in the
+  browser. That leaves a short post-load window, and a JS-disabled case, where the
+  region is not a tab stop.
 - Keys are handled on that element's own `keydown`, so the RSVP form is
   untouched *by construction* rather than by a growing blocklist.
 - Space / ArrowUp / `W` → jump, Space / Enter → restart when dead. There is one
@@ -455,9 +476,10 @@ both the requested behaviour and the reason the page stays cheap.
   sibling-combinator selector depends on the two cloud divs being adjacent
   siblings, so it becomes dead CSS the moment a third layer enters the hero —
   remove it rather than leaving a trap.
-- The game occupies a bottom band (`~clamp`ed 160–200 px, hidden if the viewport
-  is too short). The hero content block gains bottom padding so text never
-  collides with the player on a short screen.
+- The game occupies a bottom band (`clamp(160px, 22svh, 200px)` as implemented,
+  hidden below a ~640px viewport height). The hero content block gains bottom
+  padding so text never collides with the player on a short screen, and the
+  padding resets when the band is hidden.
 - Game sits at `z-0`, `.hero-content` stays `z-10`.
 - Colour: render in the same muted tone family as the clouds (`#d6d3d1`-ish) from
   `theme.runner.color`, not a bold dark silhouette.
@@ -535,26 +557,31 @@ in full above so the seam is frozen before implementation starts. Getting it wro
 now is cheap; getting it wrong at step 4 means reshaping the module after the
 component depends on it.
 
-**Known divergences between this spec and the prototype code**, all deliberate and
-recorded rather than hidden:
+**Known divergences between this spec and the implementation**, recorded rather
+than hidden:
 
-- `resize()` is specified above but **not implemented**. The debug page recreates
-the game on resize, which resets the run. Step 3 must implement `resize` so the
-run survives it.
+- `resize()` is now **implemented** and keeps the run alive, with the caveats
+  noted under [World geometry](#world-geometry).
 - `createGame`'s geometry arguments are optional in the code (defaulting to
-`bandHeight 190`, `canvasWidth 640`); the spec above treats them as required.
+  `bandHeight 190`, `canvasWidth 640`); the spec above treats them as required.
 - The geometry formula was corrected after the prototype found the `max()` bug.
-The code now matches the corrected `min()` form, and the harness guards the
-breakpoint where the width floor stops holding.
-- The prototype's placeholder sprite is a rectangle, and its interactive canvas
-is a debug page — step 2's real component is unbuilt.
+  The code matches the corrected `min()` form, and the assertions guard the
+  breakpoint where the width floor stops holding.
+- The throwaway debug page was **deleted**; it sat in `src/pages` under
+  `output: "server"` and would have shipped. The assertions now live in
+  `scripts/verify-runner.ts`, run with
+  `node --experimental-strip-types scripts/verify-runner.ts` (non-zero exit on
+  failure), and derive from `TUNING` rather than copies.
+- `public/clouds/cloud-large.svg` is now unreferenced by anything, since the game
+  replaced the bottom cloud layer. Delete it when convenient.
+- Sprites are still placeholder rectangles; step 4 is unbuilt.
 - `TUNING`, `Tuning`, and `AIR_TIME` are exported, and `createGame` accepts
 `tuning?: Partial<Tuning>`. This is a deliberate addition to the surface described
 above: it lets the debug page and harness read real values instead of hand-copied
 mirrors. The spawner must recompute airtime from the *active* tuning rather than
 the module default, or per-run overrides would silently break the gap guarantee.
-- Duck is gone as of tuning round 1; the prototype implements the jump-only input
-model specified above.
+- Duck is gone as of tuning round 1; the implementation follows the jump-only
+input model specified above.
 
 ## Verification
 
