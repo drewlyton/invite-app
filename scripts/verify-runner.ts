@@ -394,6 +394,83 @@ function resizeTest(): Assertion {
 	};
 }
 
+// --- 6. vertical fit at the tightest geometry -------------------------------
+
+/**
+ * `groundMargin` lifts the ground line off the bottom of the band, which also
+ * lifts the player's jump apex. The tightest case is the smallest `worldHeight`
+ * the geometry formula can produce — its floor of `targetWorldHeight` — because
+ * the sprite top at apex sits `groundMargin + apex + playerHeight` below the
+ * band's bottom, so it must not exceed `worldHeight`.
+ *
+ * We sweep the documented band-height range and a spread of widths, find the
+ * geometry with the smallest worldHeight, measure the player's actual highest
+ * point there (the discrete integrator's apex, not the nominal v^2/2g one) and
+ * assert both the measured sprite top stays inside the band and the nominal
+ * bound holds. A future re-tune that pushes `groundMargin` past the bound fails
+ * here instead of silently clipping the jump.
+ */
+function verticalFitTest(): Assertion {
+	let tightest = {
+		bandHeight: 0,
+		canvasWidth: 0,
+		worldHeight: Number.POSITIVE_INFINITY,
+		pixelScale: 0,
+	};
+	for (let bandHeight = 160; bandHeight <= 200; bandHeight++) {
+		for (const canvasWidth of [
+			320, 360, 390, 420, 480, 640, 800, 1024, 1280, 1920,
+		]) {
+			const s = view(createGame({ bandHeight, canvasWidth }));
+			if (s.worldHeight < tightest.worldHeight) {
+				tightest = {
+					bandHeight,
+					canvasWidth,
+					worldHeight: s.worldHeight,
+					pixelScale: s.pixelScale,
+				};
+			}
+		}
+	}
+
+	// Measure the discrete apex in the tightest geometry.
+	let g = start(
+		createGame({
+			bandHeight: tightest.bandHeight,
+			canvasWidth: tightest.canvasWidth,
+			seed: 1,
+		}),
+	);
+	const first = view(g);
+	const groundY = first.groundY;
+	const standingTop = groundY - TUNING.playerHeight;
+	let minTop = standingTop;
+	g = step(g, DT, { jump: true });
+	for (let i = 0; i < 2000 && view(g).player.airborne; i++) {
+		const top = view(g).player.y;
+		if (top < minTop) minTop = top;
+		g = step(g, DT, { jump: false });
+	}
+	const measuredApex = standingTop - minTop;
+
+	// Nominal bound from the brief: groundMargin + apex + playerHeight must fit
+	// within worldHeight for the sprite top at apex to stay inside the band.
+	const maxMarginNominal =
+		tightest.worldHeight - APEX_FEET - TUNING.playerHeight;
+	const maxMarginMeasured =
+		tightest.worldHeight - measuredApex - TUNING.playerHeight;
+	const spriteTopAtApex = minTop;
+	const pass =
+		tightest.worldHeight >= TUNING.targetWorldHeight - 1e-9 &&
+		spriteTopAtApex >= -1e-9 &&
+		TUNING.groundMargin <= maxMarginNominal + 1e-9;
+	return {
+		name: "6. Vertical fit at the tightest geometry",
+		pass,
+		detail: `tightest worldHeight=${tightest.worldHeight.toFixed(3)} at bandHeight=${tightest.bandHeight}, canvasWidth=${tightest.canvasWidth} (pixelScale=${tightest.pixelScale.toFixed(3)}); measured apex=${measuredApex.toFixed(3)}u (nominal ${APEX_FEET.toFixed(3)}u); sprite top at apex y=${spriteTopAtApex.toFixed(3)} >= 0: ${spriteTopAtApex >= -1e-9}; groundMargin=${TUNING.groundMargin} <= worldHeight - apex - playerHeight: nominal bound ${maxMarginNominal.toFixed(3)}, measured bound ${maxMarginMeasured.toFixed(3)}.`,
+	};
+}
+
 // --- run --------------------------------------------------------------------
 
 const airTime = measureAirTime();
@@ -429,12 +506,14 @@ const clearability = clearabilityKinds.map(({ kind, minWidth }) =>
 
 const warning = warningTest(maxSpeed);
 const resizeAssertion = resizeTest();
+const verticalFit = verticalFitTest();
 const requiredAssertions: Assertion[] = [
 	purity,
 	spacing,
 	warning,
 	...clearability,
 	resizeAssertion,
+	verticalFit,
 ];
 const caveat = geometryCaveat(maxSpeed);
 const allPass = requiredAssertions.every((a) => a.pass);
@@ -466,6 +545,6 @@ console.log("Tuning readout (read from runner.ts)");
 for (const [k, v] of tuningRows) console.log(`  ${k}: ${v}`);
 
 console.log(
-	`\nOverall (purity + spacing + warning + per-kind clearability + resize): ${allPass ? "PASS" : "FAIL"}`,
+	`\nOverall (purity + spacing + warning + per-kind clearability + resize + vertical fit): ${allPass ? "PASS" : "FAIL"}`,
 );
 process.exitCode = allPass ? 0 : 1;

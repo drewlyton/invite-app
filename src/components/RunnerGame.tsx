@@ -199,13 +199,23 @@ export default function RunnerGame({
 			// Transparent, so the hero's own background shows through.
 			ctx.clearRect(0, 0, cssWidth, bandHeight);
 
-			// Ground: a tiled dash strip. The only thing that scrolls.
+			// Ground: a muted fill from the ground line down to the bottom of the
+			// band, with the tiled dash strip along its top edge. Raising the ground
+			// line with `TUNING.groundMargin` would otherwise leave dead white space
+			// beneath it; the fill makes that region read as ground. Kept at low
+			// alpha so hero text that overlaps the band keeps its contrast.
+			const groundTop = s.groundY * px;
 			ctx.fillStyle = groundColor;
+			ctx.globalAlpha = 0.22;
+			ctx.fillRect(0, groundTop, cssWidth, bandHeight - groundTop);
+			ctx.globalAlpha = 1;
+
+			// Dash strip: the only part of the ground that scrolls.
 			const tile = 16;
 			const dash = 6;
 			const offset = ((s.groundOffset % tile) + tile) % tile;
 			for (let x = -offset; x < s.worldWidth + tile; x += tile) {
-				ctx.fillRect(x * px, s.groundY * px, dash * px, 2);
+				ctx.fillRect(x * px, groundTop, dash * px, 2);
 			}
 
 			// Placeholder rectangles. One fillRect per rect, world units -> CSS px.

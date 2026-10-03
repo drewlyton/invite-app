@@ -79,7 +79,13 @@ export const TUNING = {
 	minWorldWidth: 260,
 	pixelScaleMin: 1.5,
 	pixelScaleMax: 3,
-	groundMargin: 4,
+	// Distance from the bottom of the band up to the ground line. Increasing it
+	// raises the ground. Bounded by the vertical fit: at the tightest geometry
+	// (worldHeight == targetWorldHeight) it must satisfy
+	// groundMargin <= worldHeight - apex - playerHeight (~28), or the player's
+	// sprite top leaves the band at the apex of a jump. Guarded by the vertical
+	// fit assertion in scripts/verify-runner.ts.
+	groundMargin: 14,
 
 	// Player. Jump-only: there is no duck pose and no duck hitbox.
 	playerWidth: 16,
