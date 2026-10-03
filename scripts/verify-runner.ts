@@ -1,23 +1,28 @@
----
-// THROWAWAY — delete before deploy. Scratch debug page for the hero runner
-// prototype (steps 1-2 of docs/hero-runner-game.md). Not wired into any theme,
-// not linked from anywhere, placeholder rectangles only.
-//
-// The frontmatter runs the Verification assertions server-side so that
-// `curl http://localhost:4321/scratch/runner-debug` prints real pass/fail HTML
-// with no browser involved. The client script at the bottom of the body drives
-// the interactive canvas and accepts ?gravity=&jump=&maxSpeed= knobs.
+/**
+ * Standalone verification for src/lib/runner.ts.
+ *
+ * Relocated from the throwaway Astro debug page so no verification page ships
+ * under `output: "server"`. There is no test runner in this repo, so this is a
+ * plain Node script that drives the pure simulation:
+ *
+ *   node --experimental-strip-types scripts/verify-runner.ts
+ *
+ * Every assertion and every reported number is derived from `TUNING` (and the
+ * exported `AIR_TIME`), never hand-copied. Exits non-zero if a required
+ * assertion fails.
+ */
 
 import {
 	AIR_TIME,
 	createGame,
 	type Game,
 	type ObstacleKind,
+	resize,
 	start,
 	step,
 	TUNING,
 	view,
-} from "../../lib/runner";
+} from "../src/lib/runner.ts";
 
 const DT = 1 / 120;
 
@@ -232,8 +237,7 @@ function firstObstacle(seed: number): FoundObstacle | null {
  * the boxes would overlap. We therefore define it as the *latest frame at which
  * a jump still clears* — the point of no return. The assertion is that this
  * frame exists, is strictly before the contact frame, and that jumping one
- * frame later collides (so the boundary is real). The literal contactFrame-1
- * result is reported too.
+ * frame later collides.
  *
  * Jump-only classification (matches OBSTACLE_SHAPES in runner.ts):
  *   must jump  => bottomClear < standingHitboxTop(17.6)
@@ -318,11 +322,84 @@ function clearabilityFor(target: ObstacleKind, minWidth = 0): Assertion {
 	};
 }
 
+// --- 5. resize keeps the run alive ------------------------------------------
+
+/**
+ * resize() is simulation state and must not reset the run. Obstacles are in
+ * world units, so a resize may only change the window and the ground-relative
+ * y offsets — never the distance counters, the obstacle x positions or the
+ * ground clearances.
+ */
+function resizeTest(): Assertion {
+	let g = start(createGame({ seed: 4242, bandHeight: 190, canvasWidth: 640 }));
+	for (let i = 0; i < 600; i++) {
+		g = step(g, DT, { jump: i % 61 === 0 });
+	}
+	const before = view(g);
+	const beforeDistance = before.groundOffset;
+	const beforeScore = before.score;
+	const beforePhase = before.phase;
+	const beforeObstacles = before.obstacles.map((o) => ({
+		kind: o.kind,
+		x: o.x,
+		w: o.w,
+		clearance: before.groundY - (o.y + o.h),
+	}));
+	const extraDistance = before.obstacles.map(
+		(o) => o.x + o.w - before.player.x,
+	);
+	const beforePlayerClearance =
+		before.groundY - (before.player.y + before.player.h);
+
+	const narrow = view(resize(g, { bandHeight: 160, canvasWidth: 360 }));
+	const wide = view(resize(g, { bandHeight: 220, canvasWidth: 1280 }));
+
+	const sameObstacles = (s: typeof narrow): boolean =>
+		s.obstacles.length === beforeObstacles.length &&
+		s.obstacles.every((o, i) => {
+			const b = beforeObstacles[i];
+			const clearance = s.groundY - (o.y + o.h);
+			return (
+				o.kind === b.kind &&
+				Math.abs(o.x - b.x) < 1e-9 &&
+				Math.abs(o.w - b.w) < 1e-9 &&
+				Math.abs(clearance - b.clearance) < 1e-9
+			);
+		});
+
+	const snapshotHolds = (s: typeof narrow): boolean =>
+		s.phase === beforePhase &&
+		Math.abs(s.groundOffset - beforeDistance) < 1e-9 &&
+		s.score === beforeScore &&
+		Math.abs(s.groundY - (s.player.y + s.player.h) - beforePlayerClearance) <
+			1e-9 &&
+		sameObstacles(s);
+
+	// The run must keep integrating after a resize, not restart at distance 0.
+	let after = resize(g, { bandHeight: 160, canvasWidth: 360 });
+	for (let i = 0; i < 240; i++) after = step(after, DT, { jump: false });
+	const afterView = view(after);
+	const progressed = afterView.groundOffset > beforeDistance + 1;
+
+	const geometryChanges = narrow.pixelScale !== wide.pixelScale;
+	const pass =
+		snapshotHolds(narrow) &&
+		snapshotHolds(wide) &&
+		progressed &&
+		geometryChanges;
+	return {
+		name: "5. Resize keeps the run alive",
+		pass,
+		detail: `before: phase=${beforePhase} distance=${beforeDistance.toFixed(2)} score=${beforeScore} obstacles=${beforeObstacles.length}; after 160x360: same snapshot ${snapshotHolds(narrow)} (pixelScale ${before.pixelScale.toFixed(3)}->${narrow.pixelScale.toFixed(3)}); after 220x1280: same snapshot ${snapshotHolds(wide)} (pixelScale ${wide.pixelScale.toFixed(3)}); still running and progressed ${progressed} (distance ${afterView.groundOffset.toFixed(2)}); geometry changed between sizes: ${geometryChanges}. Extra travel-to-player distances preserved: ${extraDistance.map((d) => d.toFixed(1)).join(", ") || "n/a"}.`,
+	};
+}
+
 // --- run --------------------------------------------------------------------
 
 const airTime = measureAirTime();
 const purity = purityTest();
 const spacing = spacingTest();
+
 // Saturate the speed ramp to measure max speed with a dead-but-still-scrolling
 // world (the sim keeps integrating after a collision; see runner.ts).
 let speedGame = start(
@@ -351,416 +428,44 @@ const clearability = clearabilityKinds.map(({ kind, minWidth }) =>
 );
 
 const warning = warningTest(maxSpeed);
+const resizeAssertion = resizeTest();
 const requiredAssertions: Assertion[] = [
 	purity,
 	spacing,
 	warning,
 	...clearability,
+	resizeAssertion,
 ];
 const caveat = geometryCaveat(maxSpeed);
-const assertions: Assertion[] = [...requiredAssertions, caveat];
 const allPass = requiredAssertions.every((a) => a.pass);
 
-// Tuning readout, computed from the real constants (no hand-copied mirror).
+console.log("Hero runner verification (src/lib/runner.ts)\n");
+for (const a of requiredAssertions) {
+	console.log(`${a.pass ? "PASS" : "FAIL"}  ${a.name}`);
+	console.log(`      ${a.detail}\n`);
+}
+console.log(`${caveat.pass ? "PASS" : "FAIL"}  ${caveat.name}  [not required]`);
+console.log(`      ${caveat.detail}\n`);
+
 const tuningRows: [string, string][] = [
 	["targetWorldHeight", String(TUNING.targetWorldHeight)],
 	["minWorldWidth", String(TUNING.minWorldWidth)],
 	["pixelScaleMin / Max", `${TUNING.pixelScaleMin} / ${TUNING.pixelScaleMax}`],
-	["groundMargin", String(TUNING.groundMargin)],
 	["playerWidth x height", `${TUNING.playerWidth} x ${TUNING.playerHeight}`],
 	["playerX", String(TUNING.playerX)],
-	["hitboxInset", `${TUNING.hitboxInset} per side`],
-	["gravity", `${TUNING.gravity} u/s^2`],
-	["jumpVelocity", `${TUNING.jumpVelocity} u/s`],
-	["nominal airtime (AIR_TIME)", `${AIR_TIME.toFixed(4)} s`],
+	["gravity / jumpVelocity", `${TUNING.gravity} / ${TUNING.jumpVelocity}`],
+	["nominal AIR_TIME", `${AIR_TIME.toFixed(4)} s`],
+	["measured airtime", `${airTime.toFixed(4)} s (discrete)`],
+	["startSpeed / maxSpeed", `${TUNING.startSpeed} / ${maxSpeed.toFixed(2)}`],
 	[
 		"apex feet / hitbox bottom",
 		`${APEX_FEET.toFixed(2)} / ${APEX_HITBOX_BOTTOM.toFixed(2)} u`,
 	],
-	[
-		"measured airtime",
-		`${airTime.toFixed(4)} s (discrete, ${DT.toFixed(4)}s steps)`,
-	],
-	[
-		"startSpeed / maxSpeed",
-		`${TUNING.startSpeed} / ${maxSpeed.toFixed(2)} u/s`,
-	],
-	[
-		"speedRamp",
-		`${TUNING.speedRamp} (u/s) per unit (max at ${((TUNING.maxSpeed - TUNING.startSpeed) / TUNING.speedRamp).toFixed(0)} units)`,
-	],
-	["scoreUnit / spawnMargin", `${TUNING.scoreUnit} / ${TUNING.spawnMargin}`],
-	[
-		"gapJitterMax / reactionBudget",
-		`${TUNING.gapJitterMax} / ${TUNING.reactionBudget} s`,
-	],
-	[
-		"standing hitbox (clearance)",
-		`${STANDING_HITBOX_BOTTOM} - ${STANDING_HITBOX_TOP}`,
-	],
-	["obstacle widths (chosen)", "narrow 4, wide 10, cluster 3x(1-3), flying 6"],
 ];
----
+console.log("Tuning readout (read from runner.ts)");
+for (const [k, v] of tuningRows) console.log(`  ${k}: ${v}`);
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<meta name="robots" content="noindex">
-		<title>THROWAWAY runner prototype debug</title>
-		<style>
-		body {
-			margin: 0;
-			padding: 16px;
-			font:
-				13px / 1.5 ui-monospace,
-				monospace;
-			background: #fafaf9;
-			color: #1c1917;
-		}
-		h1 {
-			font-size: 15px;
-			margin: 0 0 4px;
-		}
-		.banner {
-			background: #fef3c7;
-			border: 1px solid #f59e0b;
-			padding: 8px 10px;
-			margin-bottom: 12px;
-		}
-		table {
-			border-collapse: collapse;
-			width: 100%;
-			margin-bottom: 16px;
-		}
-		th,
-		td {
-			border: 1px solid #d6d3d1;
-			padding: 5px 7px;
-			text-align: left;
-			vertical-align: top;
-		}
-		.pass {
-			color: #166534;
-			font-weight: 700;
-		}
-		.fail {
-			color: #b91c1c;
-			font-weight: 700;
-		}
-		.two {
-			display: flex;
-			gap: 16px;
-			flex-wrap: wrap;
-			align-items: flex-start;
-		}
-		.runner-wrap {
-			flex: 1 1 520px;
-			min-width: 320px;
-		}
-		canvas {
-			display: block;
-			width: 100%;
-			background: #fff;
-			border: 1px solid #d6d3d1;
-			outline: none;
-			cursor: pointer;
-			image-rendering: pixelated;
-		}
-		canvas:focus {
-			border-color: #1c1917;
-		}
-		pre {
-			flex: 0 1 340px;
-			margin: 0;
-			padding: 8px;
-			background: #fff;
-			border: 1px solid #d6d3d1;
-			overflow: auto;
-		}
-		.hint {
-			margin: 6px 0 0;
-			color: #57534e;
-		}
-		</style>
-	</head>
-	<body>
-		<div class="banner">
-			<strong>THROWAWAY debug page — delete before deploy.</strong>
-			Prototype steps 1-2 only. No theme wiring, no sprites (placeholder
-			rectangles), no a11y work. Jump-only: one button, no duck. Server-side
-			assertions below; interactive canvas for tuning jump feel and spawn rhythm
-			by hand. Knobs: <code>?gravity=&amp;jump=&amp;maxSpeed=</code>
-			(<code>jump</code>
-			is magnitude; default 1384 / 353 / 280).
-		</div>
-
-		<h1>Verification assertions (server-side, no browser)</h1>
-		<table>
-			<thead>
-				<tr>
-					<th>Assertion</th>
-					<th>Result</th>
-					<th>Observed output</th>
-				</tr>
-			</thead>
-			<tbody>
-				{assertions.map((a) => (
-	<tr>
-		<td>{a.name}</td>
-		<td class={a.pass ? "pass" : "fail"}>{a.pass ? "PASS" : "FAIL"}</td>
-		<td>{a.detail}</td>
-	</tr>
-))}
-			</tbody>
-		</table>
-		<p>
-			<strong
-				>Overall (purity + spacing + warning + per-kind clearability):</strong
-			>
-			<span class={allPass ? "pass" : "fail"}>{allPass ? "PASS" : "FAIL"}</span>
-		</p>
-
-		<h1>Interactive canvas (tune by hand)</h1>
-		<div class="two">
-			<div class="runner-wrap">
-				<canvas
-					id="runner-canvas"
-					tabindex="0"
-					aria-label="Runner prototype debug canvas"
-				></canvas>
-				<p class="hint">
-					Focus the canvas, then Space / ArrowUp / W to jump. Space or Enter
-					restarts when dead. Click/tap starts or restarts. No duck — jump is
-					the only move.
-				</p>
-			</div>
-			<pre id="runner-readout">loading…</pre>
-		</div>
-
-		<h1>Tuning constants (read from runner.ts)</h1>
-		<table>
-			<tbody>
-				{tuningRows.map(([k, v]) => (
-	<tr>
-		<td>{k}</td>
-		<td>{v}</td>
-	</tr>
-))}
-			</tbody>
-		</table>
-
-		<script>
-		import {
-			createGame,
-			type Game,
-			hitboxes,
-			restart,
-			start,
-			step,
-			TUNING,
-			type Tuning,
-			view,
-		} from "../../lib/runner";
-
-		const BAND_HEIGHT = 190;
-		const FIXED_DT = 1 / 120;
-		const SEED = 20251002;
-
-		// Optional per-run physics knobs, so the human can tune by feel without a
-		// rebuild: ?gravity=1384&jump=353&maxSpeed=280 (jump is a magnitude).
-		const params = new URLSearchParams(window.location.search);
-		function numericParam(name: string): number | undefined {
-			const raw = params.get(name);
-			if (raw === null || raw.trim() === "") return undefined;
-			const value = Number(raw);
-			return Number.isFinite(value) ? value : undefined;
-		}
-		const tuningOverride: Partial<Tuning> = {};
-		const gravityParam = numericParam("gravity");
-		if (gravityParam !== undefined) tuningOverride.gravity = gravityParam;
-		const jumpParam = numericParam("jump");
-		if (jumpParam !== undefined)
-			tuningOverride.jumpVelocity = -Math.abs(jumpParam);
-		const maxSpeedParam = numericParam("maxSpeed");
-		if (maxSpeedParam !== undefined) tuningOverride.maxSpeed = maxSpeedParam;
-		const activeTuning: Tuning = { ...TUNING, ...tuningOverride };
-
-		const canvas = document.getElementById(
-			"runner-canvas",
-		) as HTMLCanvasElement | null;
-		const readout = document.getElementById("runner-readout") as HTMLElement;
-		if (!canvas || !readout) throw new Error("debug page elements missing");
-		const ctx = canvas.getContext("2d");
-		if (!ctx) throw new Error("2d context unavailable");
-
-		let game: Game = createGame({
-			bandHeight: BAND_HEIGHT,
-			canvasWidth: 640,
-			seed: SEED,
-			tuning: tuningOverride,
-		});
-		let cssWidth = 640;
-		const held = new Set<string>();
-		let accumulator = 0;
-		let lastTime = 0;
-		let liveSpeed = 0;
-
-		function input() {
-			return {
-				jump: held.has("Space") || held.has("ArrowUp") || held.has("KeyW"),
-			};
-		}
-
-		function resize(): void {
-			if (!canvas || !ctx) return;
-			const rect = canvas.getBoundingClientRect();
-			cssWidth = Math.max(1, Math.round(rect.width));
-			const dpr = Math.min(window.devicePixelRatio || 1, 2);
-			canvas.width = Math.round(cssWidth * dpr);
-			canvas.height = Math.round(BAND_HEIGHT * dpr);
-			canvas.style.height = `${BAND_HEIGHT}px`;
-			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-			// NOTE: the frozen public surface has no resize() seam, so this
-			// recreates the game and resets the run (spec wants the run to
-			// continue; flagged in the report).
-			game = createGame({
-				bandHeight: BAND_HEIGHT,
-				canvasWidth: cssWidth,
-				seed: SEED,
-				highScore: view(game).highScore,
-				tuning: tuningOverride,
-			});
-			accumulator = 0;
-			draw();
-		}
-
-		function pad(n: number): string {
-			return String(Math.max(0, Math.floor(n))).padStart(5, "0");
-		}
-
-		function draw(): void {
-			if (!ctx) return;
-			const s = view(game);
-			const px = s.pixelScale;
-			ctx.fillStyle = "#ffffff";
-			ctx.fillRect(0, 0, cssWidth, BAND_HEIGHT);
-
-			// ground dashes (scroll with groundOffset)
-			ctx.fillStyle = "#d6d3d1";
-			const tile = 16;
-			const dash = 6;
-			const offset = ((s.groundOffset % tile) + tile) % tile;
-			for (let x = -offset; x < s.worldWidth + tile; x += tile) {
-				ctx.fillRect(x * px, s.groundY * px, dash * px, 2);
-			}
-
-			// obstacles
-			ctx.fillStyle = "#a8a29e";
-			for (const o of s.obstacles) {
-				ctx.fillRect(o.x * px, o.y * px, o.w * px, o.h * px);
-			}
-
-			// player
-			ctx.fillStyle = s.phase === "dead" ? "#dc2626" : "#57534e";
-			ctx.fillRect(
-				s.player.x * px,
-				s.player.y * px,
-				s.player.w * px,
-				s.player.h * px,
-			);
-
-			// collision-debug hitboxes
-			ctx.strokeStyle = "rgba(220,38,38,0.85)";
-			ctx.lineWidth = 1;
-			for (const r of hitboxes(game)) {
-				ctx.strokeRect(
-					Math.round(r.x * px) + 0.5,
-					Math.round(r.y * px) + 0.5,
-					Math.round(r.w * px),
-					Math.round(r.h * px),
-				);
-			}
-
-			// arcade score HUD, on canvas so nothing re-renders per frame
-			ctx.fillStyle = "#1c1917";
-			ctx.font = "12px ui-monospace, monospace";
-			ctx.textAlign = "right";
-			ctx.fillText(
-				`HI ${pad(s.highScore)}   ${pad(s.score)}`,
-				cssWidth - 6,
-				15,
-			);
-			ctx.textAlign = "left";
-
-			readout.textContent = [
-				`phase        ${s.phase}`,
-				`score        ${s.score}  (hi ${s.highScore})`,
-				`distance     ${s.groundOffset.toFixed(1)} u`,
-				`speed        ${liveSpeed.toFixed(1)} u/s`,
-				`gravity      ${activeTuning.gravity} u/s^2`,
-				`jump         ${activeTuning.jumpVelocity} u/s`,
-				`maxSpeed     ${activeTuning.maxSpeed} u/s`,
-				`pixelScale   ${s.pixelScale.toFixed(3)}`,
-				`world        ${s.worldWidth.toFixed(1)} x ${s.worldHeight.toFixed(1)} u`,
-				`groundY      ${s.groundY.toFixed(1)} u`,
-				`player       x=${s.player.x} y=${s.player.y.toFixed(1)} ${s.player.pose}${s.player.airborne ? " airborne" : ""}`,
-				`obstacles    ${s.obstacles.map((o) => `${o.kind}@${o.x.toFixed(0)}`).join(" ") || "-"}`,
-			].join("\n");
-		}
-
-		function frame(time: number): void {
-			if (!lastTime) lastTime = time;
-			let dt = (time - lastTime) / 1000;
-			lastTime = time;
-			if (dt > 0.25) dt = 0.25;
-			accumulator += dt;
-			const s0 = view(game);
-			if (s0.phase === "running") {
-				const frameInput = input();
-				while (accumulator >= FIXED_DT) {
-					const before = view(game).groundOffset;
-					game = step(game, FIXED_DT, frameInput);
-					liveSpeed = (view(game).groundOffset - before) / FIXED_DT;
-					accumulator -= FIXED_DT;
-				}
-			} else {
-				accumulator = 0;
-			}
-			draw();
-			requestAnimationFrame(frame);
-		}
-
-		function activate(): void {
-			const phase = view(game).phase;
-			if (phase === "idle") game = start(game);
-			else if (phase === "dead") game = restart(game);
-			canvas?.focus();
-		}
-
-		window.addEventListener("keydown", (e) => {
-			if (e.code === "Space" || e.code === "ArrowUp") {
-				e.preventDefault();
-			}
-			held.add(e.code);
-			if (e.code === "Space" || e.code === "Enter") {
-				const phase = view(game).phase;
-				if (phase === "idle" || phase === "dead") activate();
-			}
-		});
-		window.addEventListener("keyup", (e) => {
-			held.delete(e.code);
-		});
-		canvas.addEventListener("pointerdown", () => {
-			activate();
-		});
-		window.addEventListener("resize", () => {
-			resize();
-		});
-
-		resize();
-		requestAnimationFrame(frame);
-		</script>
-	</body>
-</html>
+console.log(
+	`\nOverall (purity + spacing + warning + per-kind clearability + resize): ${allPass ? "PASS" : "FAIL"}`,
+);
+process.exitCode = allPass ? 0 : 1;
