@@ -11,6 +11,12 @@ export type Theme = {
 	stars: { color: string } | null;
 	balloons: { colors: string[] } | null;
 	clouds: { color: string } | null;
+	runner: {
+		color: string;
+		ground?: string;
+		celebrateAt?: number;
+		celebrationMessage?: string;
+	} | null;
 };
 
 export const themes: Record<string, Theme> = {
@@ -26,6 +32,7 @@ export const themes: Record<string, Theme> = {
 		stars: null,
 		balloons: null,
 		clouds: null,
+		runner: null,
 	},
 	"game-night": {
 		id: "game-night",
@@ -40,6 +47,7 @@ export const themes: Record<string, Theme> = {
 		stars: { color: "#ffffff" },
 		balloons: null,
 		clouds: null,
+		runner: null,
 	},
 	"game-night-light": {
 		id: "game-night-light",
@@ -54,6 +62,10 @@ export const themes: Record<string, Theme> = {
 		stars: { color: "#44403c" },
 		balloons: null,
 		clouds: { color: "#d6d3d1" },
+		runner: {
+			color: "#d6d3d1",
+			ground: "#a8a29e",
+		},
 	},
 	birthday: {
 		id: "birthday",
@@ -75,6 +87,7 @@ export const themes: Record<string, Theme> = {
 			],
 		},
 		clouds: null,
+		runner: null,
 	},
 };
 

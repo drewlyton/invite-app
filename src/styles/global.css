@@ -5,7 +5,6 @@
 	--animate-twinkle: twinkle 4s ease-in-out infinite;
 	--animate-balloon-float: balloon-float 7s ease-in-out infinite;
 	--animate-cloud-scroll-slow: cloud-scroll 90s linear infinite;
-	--animate-cloud-scroll-fast: cloud-scroll 60s linear infinite;
 
 	--font-heading: ui-sans-serif, system-ui, sans-serif;
 	--font-body: ui-sans-serif, system-ui, sans-serif;
