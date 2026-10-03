@@ -11,6 +11,11 @@ export type Theme = {
 	stars: { color: string } | null;
 	balloons: { colors: string[] } | null;
 	clouds: { color: string } | null;
+	/**
+	 * Opt in to moving the date/time/location/RSVP block out of the hero and
+	 * below the fold, leaving the hero as eyebrow + title + subtitle only.
+	 */
+	detailsBelowFold: boolean;
 	runner: {
 		color: string;
 		ground?: string;
@@ -32,6 +37,7 @@ export const themes: Record<string, Theme> = {
 		stars: null,
 		balloons: null,
 		clouds: null,
+		detailsBelowFold: false,
 		runner: null,
 	},
 	"game-night": {
@@ -47,6 +53,7 @@ export const themes: Record<string, Theme> = {
 		stars: { color: "#ffffff" },
 		balloons: null,
 		clouds: null,
+		detailsBelowFold: false,
 		runner: null,
 	},
 	"game-night-light": {
@@ -62,6 +69,7 @@ export const themes: Record<string, Theme> = {
 		stars: { color: "#44403c" },
 		balloons: null,
 		clouds: { color: "#d6d3d1" },
+		detailsBelowFold: true,
 		runner: {
 			color: "#d6d3d1",
 			ground: "#a8a29e",
@@ -87,6 +95,7 @@ export const themes: Record<string, Theme> = {
 			],
 		},
 		clouds: null,
+		detailsBelowFold: false,
 		runner: null,
 	},
 };
