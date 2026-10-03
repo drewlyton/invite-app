@@ -26,6 +26,9 @@ export type ObstacleKind =
 /** Rectangles are top-left + size in world units, matching ctx.fillRect. */
 export type Rect = { x: number; y: number; w: number; h: number };
 
+/** The renderer's viewport, as measured from the DOM. */
+export type Geometry = { bandHeight: number; canvasWidth: number };
+
 /**
  * Public face of a game. Everything else is private to this module: the
  * runtime object carries more fields, but the type only exposes these three so
@@ -195,7 +198,7 @@ type ObstacleState = {
 	frameTime: number;
 };
 
-type Geometry = {
+type WorldGeometry = {
 	pixelScale: number;
 	worldWidth: number;
 	worldHeight: number;
@@ -215,7 +218,7 @@ type GameState = Game & {
 	nextSpawnDistance: number;
 	nextKind: ObstacleKind;
 	nextWidth: number;
-} & Geometry;
+} & WorldGeometry;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -225,7 +228,10 @@ function clamp(value: number, min: number, max: number): number {
 	return value < min ? min : value > max ? max : value;
 }
 
-function computeGeometry(bandHeight: number, canvasWidth: number): Geometry {
+function computeGeometry(
+	bandHeight: number,
+	canvasWidth: number,
+): WorldGeometry {
 	// Both terms are UPPER bounds on pixelScale, so take the min:
 	//   bandHeight / targetWorldHeight  -> guarantees worldHeight >= target (vertical fit)
 	//   canvasWidth / minWorldWidth     -> guarantees worldWidth  >= min   (reaction time)
@@ -451,6 +457,37 @@ export function restart(game: Game): Game {
 	const g = game as GameState;
 	if (g.phase !== "dead") return { ...g };
 	return beginRun(g);
+}
+
+/**
+ * Recompute the geometry for a new band height / canvas width and **keep the
+ * run alive**.
+ *
+ * Geometry is simulation state because obstacles spawn at `worldWidth +
+ * spawnMargin`, but obstacle positions themselves are in world units: only the
+ * size of the visible window changes. Horizontal positions, gaps, the speed
+ * ramp and every fairness calculation are therefore untouched, and the distance
+ * counters are left alone, so a mid-run resize does not reset or replay the
+ * run.
+ *
+ * Vertical positions are shifted by the change in `groundY` so that every
+ * clearance measured from the ground line (player feet, obstacle bottoms) is
+ * preserved; only `pixelScale` decides how many CSS px a world unit becomes.
+ */
+export function resize(game: Game, geometry: Geometry): Game {
+	const g = game as GameState;
+	const { bandHeight, canvasWidth } = geometry;
+	const next = computeGeometry(bandHeight, canvasWidth);
+	const deltaY = next.groundY - g.groundY;
+	const state: GameState = {
+		...g,
+		bandHeight,
+		canvasWidth,
+		...next,
+		player: { ...g.player, y: g.player.y + deltaY },
+		obstacles: g.obstacles.map((o) => ({ ...o, y: o.y + deltaY })),
+	};
+	return state;
 }
 
 function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
