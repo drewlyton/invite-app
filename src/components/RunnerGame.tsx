@@ -502,11 +502,9 @@ export default function RunnerGame({
 				Press space, the up arrow, or W to jump. Press space or enter to restart
 				after a crash. Tap the hero to play.
 			</p>
-			{interactive && phase !== "running" && (
+			{interactive && phase === "dead" && (
 				<p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-body text-sm text-stone-500">
-					{phase === "dead"
-						? "Game over — press space to retry"
-						: "Tap or press space to play"}
+					Game over — press space to retry
 				</p>
 			)}
 		</div>

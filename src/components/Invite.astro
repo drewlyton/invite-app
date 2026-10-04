@@ -169,6 +169,17 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	</h2>
 )}
 
+		{/* The idle play prompt lives in the hero content, not the band, so the
+		   same message is not shown twice. The phase-specific game-over message
+		   stays in the band, near the action it describes. `motion-reduce:hidden`
+		   because play is not offered under reduced motion, and the scoped
+		   `[data-running]` rule below hides it while a run is in flight. */}
+		{theme.runner && (
+		<p class="play-prompt mt-4 font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
+			Click / Space / Tap to Play
+		</p>
+)}
+
 		{!theme.detailsBelowFold && (
 	<EventDetails
 		date={date}
@@ -394,6 +405,12 @@ const CLOUD_PARALLAX_RATE = "0.30";
    removed on idle/death. */
 [data-running] .hero-sky-strip {
 	will-change: transform;
+}
+/* The hero gets `data-running` from the island while a run is in flight. Hide
+   the idle play prompt then, purely in CSS — no React state, so starting a run
+   does not re-render the island. */
+[data-running] .play-prompt {
+	display: none;
 }
 .hero-sky-section {
 	flex: 1 0 33.3333%;
