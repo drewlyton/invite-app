@@ -161,7 +161,7 @@ GROUND_Y    = worldHeight - GROUND_MARGIN
 ```
 
 Starting values: `TARGET_WORLD_HEIGHT = 95`, `MIN_WORLD_WIDTH = 260`,
-`PIXEL_SCALE_MIN = 1.5`, `PIXEL_SCALE_MAX = 3`, `GROUND_MARGIN = 14`.
+`PIXEL_SCALE_MIN = 1.5`, `PIXEL_SCALE_MAX = 3`, `GROUND_MARGIN = 24`.
 
 `GROUND_MARGIN` is the distance from the bottom of the band up to the ground line,
 so **raising the ground means increasing it**. It lives in world units and therefore
@@ -172,15 +172,26 @@ makes each one hold:
 
 - **Vertical fit.** `pixelScale <= bandHeight / TARGET_WORLD_HEIGHT` guarantees
   `worldHeight >= TARGET_WORLD_HEIGHT`. The composition needs
-  `worldHeight >= playerHeight + apex + GROUND_MARGIN`, which at the floor of 95 is
-  `22 + 45.02 + 14 = 81`, so it fits with room to spare — the player's sprite top
-  sits ~15 units inside the band at the apex.
+  `worldHeight >= playerHeight + apex + GROUND_MARGIN`, which at the floor of 95 and
+  a margin of 24 is `22 + 45.02 + 24 = 91.02`.
 
-  This also puts a ceiling on how far the ground can be raised:
+  This puts a ceiling on how far the ground can be raised:
   **`GROUND_MARGIN <= worldHeight - apex - playerHeight ≈ 27.98`** at the tightest
-  geometry. Past that the player's head leaves the top of the band mid-jump.
-  Assertion 6 in [Verification](#verification) guards this, because it is exactly
-  the kind of number a later re-tune would push past silently.
+  geometry, so 24 leaves under **4 units** of nominal headroom (a little over 5 by
+  the measured apex, which the integrator undershoots). Past the ceiling the
+  player's head leaves the top of the band mid-jump. Assertion 6 in
+  [Verification](#verification) guards this, because it is exactly the kind of
+  number a later re-tune would push past silently.
+
+  **If the ground needs to go higher, `TARGET_WORLD_HEIGHT` is the only lever** — it
+  buys ceiling roughly 1:1. **Do not reach for the band height:** while the height
+  term binds, `worldHeight = bandHeight / (bandHeight / TARGET_WORLD_HEIGHT) =
+  TARGET_WORLD_HEIGHT`, so band height cancels out entirely, and the tightest case
+  is always the floor of 95. Swept and confirmed: `worldHeight` stays exactly 95.000
+  for every band height up to 285px. The cost of the real lever is that `pixelScale`
+  falls, so sprites shrink and `worldWidth` grows (slightly easier, more warning).
+  The remaining levers are art/physics: reduce `playerHeight`, or reduce the apex
+  by raising gravity relative to jump velocity.
 - **Width floor.** `pixelScale <= canvasWidth / MIN_WORLD_WIDTH` guarantees
   `worldWidth >= MIN_WORLD_WIDTH`, which is what preserves reaction time on a
   phone.
@@ -387,7 +398,10 @@ than hard.
 - Sprites blitted as batched rects: one `beginPath()`, a `rect()` per filled
   pixel, one `fill()`. Cheaper than N `fillRect()` calls and keeps the pixel grid
   crisp.
-- **Score is drawn on the canvas**, arcade style (`HI 00000  00012`), top-right.
+- **Score is drawn on the canvas**, arcade style (`HI 00000  00012`), **top-left**,
+  and **not drawn at all during `idle`** — there is no score until the player has
+  started a game, and it stays up through `running` and `dead` so the final score is
+  readable. Gating on the phase from `view(game)` keeps it out of React state.
   This matters: it means zero React re-renders during play. React state is only
   used for phase transitions that change DOM (hint text, game-over overlay).
 - High score persists in `localStorage` under `runner:hi:<eventId>`, wrapped in
@@ -516,13 +530,31 @@ This is opt-in per theme because it changes what a visitor sees before scrolling
 and it applies to `game-night-light` only. `default`, `game-night`, and `birthday`
 render the details inside the hero exactly as before.
 
-Two consequences to be aware of:
+### The play prompt
+
+A visible prompt sits **below the subtitle**: `Click / Space / Tap to Play`. It
+lives in the hero content rather than the canvas band, because that is where the
+eye already is, and the band's own space is needed for the game.
+
+It is hidden while a run is in flight by pure CSS off the hero's existing
+`data-running` attribute — `[data-running] .play-prompt { display: none }` — so
+starting a run does not re-render the island. It is also hidden under
+`prefers-reduced-motion`, where play is never offered.
+
+The band keeps its own **contextual** game-over line (`Game over — press space to
+retry`), which belongs near the action. The idle string that used to live there is
+gone; the same message is not shown twice.
+
+**Known wart:** `data-running` is only set while `running`, so the hero prompt
+reappears during `dead` alongside the band's game-over line. Hiding it in `dead` too
+would need a phase attribute rather than a boolean one.
+
+### Two consequences of the layout split
 
 - **The hero loses its scroll cue.** The "RSVP by …" link with its bouncing
   chevrons was the only thing signalling that more content existed below. In the
-  `detailsBelowFold` layout nothing in the hero says so. Accepted for now — the
-  game band is itself an affordance — but it is a deliberate trade, not an
-  oversight.
+  `detailsBelowFold` layout nothing in the hero says so, beyond the play prompt. It
+  is a deliberate trade, not an oversight.
 - The title/subtitle spacing overrides that exist for the pixel themes were sized
   for a stacked block that has since moved out, so that gap needed re-checking by
   eye rather than being left to the old values.
@@ -675,15 +707,41 @@ event, which is acceptable because `game-night-light` is this event's theme.
   because idle is already a static single draw.
 - Contrast: `#1c1917` body text must keep its ratio over the sprite colour.
   Verify the muted grey against white before picking it.
-- The game region is keyboard-operable. An earlier revision gave it a visible focus
-  indicator, but because the band is full-width and flush with the bottom of the
-  viewport, only the ring's **top edge** ever rendered somewhere visible — a dashed
-  line floating above the game area that read as a rendering glitch. It was
-  **deliberately removed** in favour of no indicator at all, with `outline-none`
-  retained so the browser default ring does not appear in its place. Pressing Space
-  visibly starts the game, so a keyboard user still gets feedback from the game
-  itself. This is a knowing departure from the usual "focus must be visible" rule —
-  if the band's position or size ever changes, revisit it.
+- The game region is keyboard-operable, and the band is **autofocused on load**
+  (see below). An earlier revision gave it a visible focus indicator, but because the
+  band is full-width and flush with the bottom of the viewport, only the ring's **top
+  edge** ever rendered somewhere visible — a dashed line floating above the game area
+  that read as a rendering glitch. It was **deliberately removed** in favour of no
+  indicator at all, with `outline-none` retained so the browser default ring does not
+  appear in its place. Pressing Space visibly starts the game, so a keyboard user
+  still gets feedback from the game itself. This is a knowing departure from the
+  usual "focus must be visible" rule — if the band's position or size ever changes,
+  revisit it.
+- **Focus is taken on load, and that is load-bearing rather than cosmetic.** Space is
+  the only button, and Space with nothing focused is the browser's page-down — so an
+  unfocused band means Space scrolls instead of playing. The band is therefore
+  focused on mount when the game is interactive, **with `preventScroll: true`** so the
+  viewport does not move, and only when the band has layout and nothing else already
+  holds focus. The hero's tap-to-play path focuses it too; without that, tapping to
+  start would leave focus on the body and the very next Space would both fail to jump
+  and scroll the page. Under reduced motion there is no autofocus and no tab stop.
+
+  Two consequences, both deliberate:
+  - It **supersedes the earlier "tab order reaches the RSVP link before the game
+    region" requirement.** DOM order is unchanged — the game region is still last —
+    but initial focus now lands on the band, and the RSVP link is reached forward
+    with Tab.
+  - The region is `role="group"`, **not** `role="application"`. `application`
+    promises assistive tech that keyboard input is being handed over, and since the
+    region is now focused automatically on load, that would drop a screen-reader user
+    into application mode before they read a word of the invitation — backwards for a
+    page whose primary content is the invite and whose game is optional. `group`
+    still permits the accessible name and `aria-describedby`, and the key handling
+    depends on focus plus `preventDefault`, not on application semantics. The honest
+    cost: a screen-reader user in browse mode may find Space scrolls until they switch
+    modes. Biome's `a11y/useSemanticElements` wants `<fieldset>` for `role="group"`,
+    which is form semantics and wrong here, hence one inline `biome-ignore` with that
+    reason.
 
 ## Performance and lifecycle
 
@@ -841,14 +899,22 @@ Manual checklist (applies from step 3 onward, once the game is wired into the
 hero):
 
 - [ ] Typing a name and toggling party size in the RSVP form never moves the player.
-- [ ] Tab order reaches the RSVP link before the game region.
+- [ ] On load the band holds focus and Space neither scrolls nor jumps the viewport.
+      (This supersedes the older "tab order reaches the RSVP link first" check — DOM
+      order still puts the game last, but initial focus is the band by design.)
+- [ ] Blur the band by clicking the page background, then click the hero: focus
+      returns to the band and Space jumps rather than scrolling.
 - [ ] Tapping the "RSVP by…" hero link navigates and does not start the game.
 - [ ] On a phone, scrolling through the hero does not trigger a jump.
-- [ ] With reduced motion emulated, the hero is a static pixel scene and there is
-      no way to start the game.
+- [ ] With reduced motion emulated, the hero is a static pixel scene with no play
+      prompt, no autofocus, no tab stop, and no way to start the game.
 - [ ] Scrolling to the RSVP form stops the rAF loop.
 - [ ] No obstacle is ever unclearable at max speed.
 - [ ] Hero text stays readable over the sprites.
+- [ ] The play prompt sits under the subtitle, is legible, and disappears once a run
+      starts.
+- [ ] No score is drawn before the first play; it appears at the top-left after
+      starting and remains through the game-over state.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
       still distinguishable against it.
 - [ ] The raised ground does not make the playfield feel cramped above the line.
