@@ -536,18 +536,28 @@ A visible prompt sits **below the subtitle**: `Click / Space / Tap to Play`. It
 lives in the hero content rather than the canvas band, because that is where the
 eye already is, and the band's own space is needed for the game.
 
-It is hidden while a run is in flight by pure CSS off the hero's existing
-`data-running` attribute — `[data-running] .play-prompt { display: none }` — so
-starting a run does not re-render the island. It is also hidden under
-`prefers-reduced-motion`, where play is never offered.
+It is hidden by pure CSS off a **phase** attribute on the hero,
+`data-phase = "idle" | "running" | "dead"`, which the island writes — so starting a
+run does not re-render the island. It is also hidden under `prefers-reduced-motion`,
+where play is never offered.
 
 The band keeps its own **contextual** game-over line (`Game over — press space to
-retry`), which belongs near the action. The idle string that used to live there is
-gone; the same message is not shown twice.
+retry`), which belongs near the action, so the prompt is hidden for **both**
+`running` and `dead` and the same moment never shows two messages.
 
-**Known wart:** `data-running` is only set while `running`, so the hero prompt
-reappears during `dead` alongside the band's game-over line. Hiding it in `dead` too
-would need a phase attribute rather than a boolean one.
+Two details here are load-bearing, and both were learned the hard way:
+
+- **The rule names the hidden values explicitly** —
+  `[data-phase="running"] .play-prompt, [data-phase="dead"] .play-prompt`. Do **not**
+  rewrite it as `:not([data-phase="idle"])`: before hydration there is no attribute
+  at all, so that selector matches on first paint and flashes the prompt away for
+  every visitor, including those who never play. Absent must behave like `idle`, so
+  the prompt ships visible in the HTML and stays visible without JS.
+- **Death writes `"dead"`, it does not delete the attribute.** The first version used
+  a boolean that was set only while running and deleted otherwise, which meant it
+  could not distinguish "mid-session, just crashed" from "never started" — so the
+  prompt reappeared on the game-over screen. A boolean cannot express this; the
+  attribute has to carry the phase.
 
 ### Two consequences of the layout split
 
@@ -813,13 +823,14 @@ than hidden:
   least as wide as the viewport; a narrower hero would need the specks re-expressed
   relative to the section.
 - **`will-change` is gated, not always on.** `.hero-sky-strip` carries no static
-  hint; `[data-running] .hero-sky-strip { will-change: transform }` applies only
-  while a run is in flight, and the component sets/removes `data-running` on the
-  hero with the phase. Measured with CDP `LayerTree` at 800×800: idle went from 46
-  layers (7 promoted) to **27 with 1**; during a run it is 45 with all 7 promoted.
-  Dropping `will-change` outright is **not** equivalent — with the JS-written
-  transform but no hint, Chrome promoted none of the six star strips during play,
-  so that shortcut trades idle cost for lost play-time compositing.
+  hint; `[data-phase="running"] .hero-sky-strip { will-change: transform }` applies
+  only while a run is in flight — the rAF loop is stopped on death, so `running` is
+  the only phase that should promote, and `dead` correctly does not. The component
+  writes `data-phase` on the hero. Measured with CDP `LayerTree` at 800×800: idle
+  went from 46 layers (7 promoted) to **27 with 1**; during a run it is 45 with all
+  7 promoted. Dropping `will-change` outright is **not** equivalent — with the
+  JS-written transform but no hint, Chrome promoted none of the six star strips
+  during play, so that shortcut trades idle cost for lost play-time compositing.
 - The star layers were restructured into the periodic multi-copy form for **every**
   theme that declares `stars`, which includes `game-night`. It no longer gains any
   motion (stars have no ambient drift), so the only difference there is structural.
@@ -911,8 +922,10 @@ hero):
 - [ ] Scrolling to the RSVP form stops the rAF loop.
 - [ ] No obstacle is ever unclearable at max speed.
 - [ ] Hero text stays readable over the sprites.
-- [ ] The play prompt sits under the subtitle, is legible, and disappears once a run
-      starts.
+- [ ] The play prompt sits under the subtitle and is legible; it is visible at idle,
+      hidden while running, and **hidden again on the game-over screen** so it never
+      stacks with the band's message. It must also be visible before hydration (no
+      flash on load).
 - [ ] No score is drawn before the first play; it appears at the top-left after
       starting and remains through the game-over state.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
