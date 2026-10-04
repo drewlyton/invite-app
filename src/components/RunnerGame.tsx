@@ -452,6 +452,23 @@ export default function RunnerGame({
 				threshold: 0,
 			});
 			intersection.observe(tapTarget);
+
+			// Focus on load so the first Space reaches the game instead of the
+			// browser's page-down scroll: keys are handled per-element, never on
+			// window, so an unfocused band cannot see them. Three guards keep this
+			// from being a nuisance rather than a convenience:
+			//   - reduced motion: play is not offered, so do not focus.
+			//   - no layout: the band is `display: none` below ~640px viewport
+			//     height, and focusing a zero-height element would be pointless.
+			//   - something else is already focused: if the visitor started
+			//     interacting during hydration, do not steal focus from them.
+			// `preventScroll` keeps focusing from moving the viewport.
+			if (
+				band.getBoundingClientRect().height > 0 &&
+				document.activeElement === document.body
+			) {
+				band.focus({ preventScroll: true });
+			}
 		}
 
 		return () => {
@@ -470,11 +487,12 @@ export default function RunnerGame({
 	}, [eventId, color, groundColor, textColor]);
 
 	return (
+		// biome-ignore lint/a11y/useSemanticElements: <fieldset> is form grouping semantics; this is a labeled game region, not a form.
 		<div
 			ref={bandRef}
 			className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
 			tabIndex={interactive ? 0 : -1}
-			role="application"
+			role="group"
 			aria-label="Birthday runner mini-game"
 			aria-describedby={hintId}
 			style={{ touchAction: "manipulation" }}
