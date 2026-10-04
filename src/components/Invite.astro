@@ -209,19 +209,24 @@ const CLOUD_PARALLAX_RATE = "0.30";
 )}
 
 <style>
+/* The theme's star colour is applied through `color`, which the speck field's
+   `box-shadow ... currentColor` declarations resolve against. The element's own
+   background is deliberately absent: box-shadow is not painted inside the border
+   box, so without it the origin speck at the section's top-left disappears while
+   every scattered speck stays put. */
 .hero-stars-1-a,
 .hero-stars-1-b,
 .hero-stars-1-c,
 .hero-stars-1-d {
 	width: 4px;
 	height: 4px;
-	background: currentColor;
+	color: var(--star-color);
 }
 .hero-stars-2-a,
 .hero-stars-2-b {
 	width: 2px;
 	height: 2px;
-	background: currentColor;
+	color: var(--star-color);
 	opacity: 0.85;
 }
 
@@ -381,6 +386,17 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	width: 300%;
 	height: 100%;
 	image-rendering: pixelated;
+}
+/* Promote the strips only while a run is in flight. Idle has no JS transform
+   writes at all, so a permanent will-change keeps seven 3x-hero-width
+   compositor layers alive for nothing. Scoping it to `[data-running]` leaves
+   idle with none of the star strips promoted (only the cloud strip, via its
+   parent's ambient animation) and restores all seven while a run is playing.
+   Dropping will-change outright is not equivalent: with the transform written
+   by JS but no will-change, Chrome does not promote the six star strips during
+   play. `data-running` is set by RunnerGame while the run is running and
+   removed on idle/death. */
+[data-running] .hero-sky-strip {
 	will-change: transform;
 }
 .hero-sky-section {

@@ -394,6 +394,124 @@ function resizeTest(): Assertion {
 	};
 }
 
+// --- 5b. resize widening keeps the pending spawn fair ----------------------
+
+/**
+ * Assertion 5 checks that a resize preserves the run's snapshot, but at fixed
+ * geometry: it never exercises the one horizontal quantity a resize changes.
+ *
+ * The pending spawn's gap is solved with `travelDistance = worldWidth +
+ * spawnMargin - playerX`. If the band **widens** mid-run, the pending obstacle
+ * has farther to travel and arrives faster, so the precomputed gap can fall a
+ * few units short of `speedAtArrival * AIR_TIME + width`. Narrowing is
+ * conservative, so this drives a widening between the first two spawns and
+ * asserts the realized gap is still fair. The arrival speed is solved exactly
+ * from `TUNING` rather than measured by finite difference, so the assertion is
+ * not blurred by a timestep.
+ */
+function requiredGapFor(
+	width: number,
+	baseDistance: number,
+	travelDistance: number,
+): number {
+	const maxGap = TUNING.maxSpeed * AIR_TIME + width;
+	const unclamped =
+		((TUNING.startSpeed + TUNING.speedRamp * (baseDistance + travelDistance)) *
+			AIR_TIME +
+			width) /
+		(1 - TUNING.speedRamp * AIR_TIME);
+	return Math.min(maxGap, unclamped);
+}
+
+function resizeWideningTest(): Assertion {
+	const narrowWidth = 640;
+	const wideWidth = 1280;
+	const bandHeight = 190;
+
+	let g = start(createGame({ seed: 58, bandHeight, canvasWidth: narrowWidth }));
+	const playerX = view(g).player.x;
+	const narrowTravel = view(g).worldWidth + TUNING.spawnMargin - playerX;
+
+	let lastMaxX = Number.NEGATIVE_INFINITY;
+	let spawnCount = 0;
+	let prevSpawnDistance = 0;
+	let result: {
+		gap: number;
+		width: number;
+		spawnDistance: number;
+		travel: number;
+		arrivalSpeed: number;
+		required: number;
+		oldRequired: number;
+	} | null = null;
+
+	for (let i = 0; i < 200000 && result === null; i++) {
+		g = step(g, DT, { jump: false });
+		const s = view(g);
+		let maxX = Number.NEGATIVE_INFINITY;
+		let newest: (typeof s.obstacles)[number] | null = null;
+		for (const o of s.obstacles) {
+			if (o.x > maxX) {
+				maxX = o.x;
+				newest = o;
+			}
+		}
+		// Obstacles only move left, so a rise in max x is a spawn.
+		if (newest && maxX > lastMaxX + 1e-9) {
+			spawnCount++;
+			const spawnDistance = s.groundOffset;
+			if (spawnCount === 1) {
+				prevSpawnDistance = spawnDistance;
+				// Widen before the pending (second) spawn fires. `lastMaxX` below
+				// still records spawn 1's x, so the next step does not re-detect it.
+				g = resize(g, { bandHeight, canvasWidth: wideWidth });
+			} else if (spawnCount === 2) {
+				const gap = spawnDistance - prevSpawnDistance;
+				const travel = maxX - s.player.x;
+				const arrivalDistance = spawnDistance + travel;
+				const arrivalSpeed = Math.min(
+					TUNING.maxSpeed,
+					TUNING.startSpeed + TUNING.speedRamp * arrivalDistance,
+				);
+				result = {
+					gap,
+					width: newest.w,
+					spawnDistance,
+					travel,
+					arrivalSpeed,
+					required: arrivalSpeed * AIR_TIME + newest.w,
+					oldRequired: requiredGapFor(
+						newest.w,
+						prevSpawnDistance,
+						narrowTravel,
+					),
+				};
+			}
+		}
+		lastMaxX = maxX;
+	}
+
+	if (!result) {
+		return {
+			name: "5b. Resize widening keeps the pending spawn fair",
+			pass: false,
+			detail: "no second spawn observed after the mid-run widening",
+		};
+	}
+
+	const tolerance = 1e-9;
+	const pass = result.gap >= result.required - tolerance;
+	// The jitter on the pending gap survives the re-solve, so recovering it from
+	// the realized gap lets us show what the un-resolved schedule would have done.
+	const jitter = result.gap / result.required;
+	const unresolvedGap = result.oldRequired * jitter;
+	return {
+		name: "5b. Resize widening keeps the pending spawn fair",
+		pass,
+		detail: `widened ${narrowWidth}->${wideWidth}px between spawn 1 (distance ${prevSpawnDistance.toFixed(2)}) and spawn 2; realized gap=${result.gap.toFixed(4)}u for ${result.width}u obstacle, arrival distance=${(result.spawnDistance + result.travel).toFixed(2)}, arrival speed=${result.arrivalSpeed.toFixed(3)}u/s => gap >= speedAtArrival * AIR_TIME + width is ${result.required.toFixed(4)}u, slack ${(result.gap - result.required).toFixed(4)}; resolution kept the jitter (${jitter.toFixed(3)}x). Without the re-solve the schedule would have produced ${unresolvedGap.toFixed(4)}u at the ${narrowTravel.toFixed(1)}u narrow travel distance => ${unresolvedGap >= result.required ? "still fair by luck of the jitter" : "short of the widened requirement"}.`,
+	};
+}
+
 // --- 6. vertical fit at the tightest geometry -------------------------------
 
 /**
@@ -506,6 +624,7 @@ const clearability = clearabilityKinds.map(({ kind, minWidth }) =>
 
 const warning = warningTest(maxSpeed);
 const resizeAssertion = resizeTest();
+const resizeWidening = resizeWideningTest();
 const verticalFit = verticalFitTest();
 const requiredAssertions: Assertion[] = [
 	purity,
@@ -513,6 +632,7 @@ const requiredAssertions: Assertion[] = [
 	warning,
 	...clearability,
 	resizeAssertion,
+	resizeWidening,
 	verticalFit,
 ];
 const caveat = geometryCaveat(maxSpeed);

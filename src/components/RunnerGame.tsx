@@ -126,6 +126,13 @@ export default function RunnerGame({
 
 		const heroHost =
 			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
+		// The sky strips are promoted to compositor layers only while a run is in
+		// flight (see `.hero-sky-strip` in Invite.astro). Toggle the hint with the
+		// phase so an idle hero never carries the seven large layers.
+		const setRunning = (running: boolean): void => {
+			if (running) heroHost.dataset.running = "";
+			else delete heroHost.dataset.running;
+		};
 		let parallaxLayers: ParallaxLayer[] = [];
 		let prevGroundOffset = 0;
 
@@ -290,6 +297,7 @@ export default function RunnerGame({
 			if (view(game).phase === "dead") {
 				persistHighScore(view(game).highScore);
 				setPhase("dead");
+				setRunning(false);
 			}
 		};
 
@@ -318,6 +326,7 @@ export default function RunnerGame({
 				game = restart(game);
 				setPhase("running");
 				resyncParallax();
+				setRunning(true);
 				startLoop();
 				return;
 			}
@@ -325,6 +334,7 @@ export default function RunnerGame({
 				game = start(game);
 				setPhase("running");
 			}
+			setRunning(true);
 			pointerJump = true;
 			startLoop();
 		};
@@ -446,6 +456,7 @@ export default function RunnerGame({
 
 		return () => {
 			stopLoop();
+			delete heroHost.dataset.running;
 			resizeObserver.disconnect();
 			intersection?.disconnect();
 			band.removeEventListener("keydown", onKeyDown);

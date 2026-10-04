@@ -224,6 +224,14 @@ type GameState = Game & {
 	nextSpawnDistance: number;
 	nextKind: ObstacleKind;
 	nextWidth: number;
+	/**
+	 * Distance at which the *previous* obstacle spawned. The pending spawn's
+	 * gap is measured from here, so `resize()` can re-solve it against a new
+	 * travel distance without replaying the run.
+	 */
+	prevSpawnDistance: number;
+	/** Jitter multiplier applied to the pending spawn's required gap. */
+	nextGapJitter: number;
 } & WorldGeometry;
 
 // ---------------------------------------------------------------------------
@@ -432,6 +440,8 @@ export function createGame(
 		nextSpawnDistance: 0,
 		nextKind: first.kind,
 		nextWidth: first.width,
+		prevSpawnDistance: 0,
+		nextGapJitter: 1,
 		...geometry,
 	};
 	return state;
@@ -450,6 +460,8 @@ function beginRun(g: GameState): GameState {
 		nextSpawnDistance: 0,
 		nextKind: first.kind,
 		nextWidth: first.width,
+		prevSpawnDistance: 0,
+		nextGapJitter: 1,
 	};
 }
 
@@ -471,10 +483,17 @@ export function restart(game: Game): Game {
  *
  * Geometry is simulation state because obstacles spawn at `worldWidth +
  * spawnMargin`, but obstacle positions themselves are in world units: only the
- * size of the visible window changes. Horizontal positions, gaps, the speed
- * ramp and every fairness calculation are therefore untouched, and the distance
- * counters are left alone, so a mid-run resize does not reset or replay the
- * run.
+ * size of the visible window changes. Horizontal positions, the speed ramp and
+ * the distance counters are therefore untouched by a resize, so a mid-run resize
+ * does not reset or replay the run.
+ *
+ * The one horizontal quantity a resize *does* touch is the pending spawn's gap.
+ * Its required gap was solved with `travelDistance = worldWidth + spawnMargin -
+ * playerX`; if the band widens, the pending obstacle has farther to travel and
+ * arrives at a higher speed, so the old gap can fall short of the spacing
+ * constraint. The pending gap is re-solved exactly against the new geometry and
+ * the jitter that was already applied. An obstacle already in flight keeps its
+ * `x`; only the not-yet-spawned pending one is re-scheduled.
  *
  * Vertical positions are shifted by the change in `groundY` so that every
  * clearance measured from the ground line (player feet, obstacle bottoms) is
@@ -485,11 +504,25 @@ export function resize(game: Game, geometry: Geometry): Game {
 	const { bandHeight, canvasWidth } = geometry;
 	const next = computeGeometry(bandHeight, canvasWidth);
 	const deltaY = next.groundY - g.groundY;
+	// A fresh game has `nextSpawnDistance === distance === 0`; the first step
+	// spawns it with the resized geometry, so there is nothing to re-solve yet.
+	const pendingNotSpawned = g.nextSpawnDistance > g.distance;
+	const nextSpawnDistance = pendingNotSpawned
+		? g.prevSpawnDistance +
+			requiredGap(
+				g.nextWidth,
+				g.prevSpawnDistance,
+				next.worldWidth + TUNING.spawnMargin - g.playerX,
+				g.tuning,
+			) *
+				g.nextGapJitter
+		: g.nextSpawnDistance;
 	const state: GameState = {
 		...g,
 		bandHeight,
 		canvasWidth,
 		...next,
+		nextSpawnDistance,
 		player: { ...g.player, y: g.player.y + deltaY },
 		obstacles: g.obstacles.map((o) => ({ ...o, y: o.y + deltaY })),
 	};
@@ -587,6 +620,8 @@ export function step(game: Game, dt: number, input: Input): Game {
 	let nextSpawnDistance = g.nextSpawnDistance;
 	let nextKind = g.nextKind;
 	let nextWidth = g.nextWidth;
+	let prevSpawnDistance = g.prevSpawnDistance;
+	let nextGapJitter = g.nextGapJitter;
 	const spawnX = g.worldWidth + TUNING.spawnMargin;
 
 	// One spawn per step is safe: even at max speed and maxDt the world moves
@@ -594,6 +629,7 @@ export function step(game: Game, dt: number, input: Input): Game {
 	if (distance >= nextSpawnDistance) {
 		obstacles.push(makeObstacle(g.groundY, nextKind, nextWidth, spawnX));
 		const spawnDistance = distance;
+		prevSpawnDistance = spawnDistance;
 		const chosen = chooseObstacle(rng);
 		rng = chosen.rng;
 		nextKind = chosen.kind;
@@ -601,6 +637,7 @@ export function step(game: Game, dt: number, input: Input): Game {
 		const jitterDraw = rngNext(rng);
 		rng = jitterDraw.rng;
 		const jitter = 1 + jitterDraw.value * (TUNING.gapJitterMax - 1);
+		nextGapJitter = jitter;
 		nextSpawnDistance =
 			spawnDistance +
 			requiredGap(chosen.width, spawnDistance, spawnX - g.playerX, g.tuning) *
@@ -633,6 +670,8 @@ export function step(game: Game, dt: number, input: Input): Game {
 		nextSpawnDistance,
 		nextKind,
 		nextWidth,
+		prevSpawnDistance,
+		nextGapJitter,
 		rng,
 	};
 	return next;
