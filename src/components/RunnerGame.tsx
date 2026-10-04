@@ -126,12 +126,14 @@ export default function RunnerGame({
 
 		const heroHost =
 			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
-		// The sky strips are promoted to compositor layers only while a run is in
-		// flight (see `.hero-sky-strip` in Invite.astro). Toggle the hint with the
-		// phase so an idle hero never carries the seven large layers.
-		const setRunning = (running: boolean): void => {
-			if (running) heroHost.dataset.running = "";
-			else delete heroHost.dataset.running;
+		// The hero carries a single `data-phase` attribute ("idle" | "running" |
+		// "dead") rather than a boolean, so CSS can tell "mid-session but not
+		// running" (dead) from "not started" (idle). Two consumers: the sky strips
+		// are promoted to compositor layers only while `running` (see
+		// `.hero-sky-strip` in Invite.astro), and the play prompt is hidden while
+		// `running` or `dead`.
+		const setPhaseAttr = (next: Phase): void => {
+			heroHost.dataset.phase = next;
 		};
 		let parallaxLayers: ParallaxLayer[] = [];
 		let prevGroundOffset = 0;
@@ -297,7 +299,10 @@ export default function RunnerGame({
 			if (view(game).phase === "dead") {
 				persistHighScore(view(game).highScore);
 				setPhase("dead");
-				setRunning(false);
+				// Set "dead", do not delete: the phase attribute must distinguish a
+				// finished run from an untouched idle hero, or the play prompt
+				// reappears alongside the band's game-over message.
+				setPhaseAttr("dead");
 			}
 		};
 
@@ -326,7 +331,7 @@ export default function RunnerGame({
 				game = restart(game);
 				setPhase("running");
 				resyncParallax();
-				setRunning(true);
+				setPhaseAttr("running");
 				startLoop();
 				return;
 			}
@@ -334,7 +339,7 @@ export default function RunnerGame({
 				game = start(game);
 				setPhase("running");
 			}
-			setRunning(true);
+			setPhaseAttr("running");
 			pointerJump = true;
 			startLoop();
 		};
@@ -473,7 +478,7 @@ export default function RunnerGame({
 
 		return () => {
 			stopLoop();
-			delete heroHost.dataset.running;
+			delete heroHost.dataset.phase;
 			resizeObserver.disconnect();
 			intersection?.disconnect();
 			band.removeEventListener("keydown", onKeyDown);

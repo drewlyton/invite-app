@@ -173,7 +173,7 @@ const CLOUD_PARALLAX_RATE = "0.30";
 		   same message is not shown twice. The phase-specific game-over message
 		   stays in the band, near the action it describes. `motion-reduce:hidden`
 		   because play is not offered under reduced motion, and the scoped
-		   `[data-running]` rule below hides it while a run is in flight. */}
+		   `[data-phase]` rule below hides it while a run is in flight or dead. */}
 		{theme.runner && (
 		<p class="play-prompt mt-4 font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
 			Click / Space / Tap to Play
@@ -396,20 +396,27 @@ const CLOUD_PARALLAX_RATE = "0.30";
 }
 /* Promote the strips only while a run is in flight. Idle has no JS transform
    writes at all, so a permanent will-change keeps seven 3x-hero-width
-   compositor layers alive for nothing. Scoping it to `[data-running]` leaves
-   idle with none of the star strips promoted (only the cloud strip, via its
-   parent's ambient animation) and restores all seven while a run is playing.
-   Dropping will-change outright is not equivalent: with the transform written
-   by JS but no will-change, Chrome does not promote the six star strips during
-   play. `data-running` is set by RunnerGame while the run is running and
-   removed on idle/death. */
-[data-running] .hero-sky-strip {
+   compositor layers alive for nothing. Scoping it to `[data-phase="running"]`
+   leaves idle with none of the star strips promoted (only the cloud strip, via
+   its parent's ambient animation) and restores all seven while a run is
+   playing. Dropping will-change outright is not equivalent: with the transform
+   written by JS but no will-change, Chrome does not promote the six star
+   strips during play. The rAF loop is stopped on death, so `running` is the
+   only phase that should promote. */
+[data-phase="running"] .hero-sky-strip {
 	will-change: transform;
 }
-/* The hero gets `data-running` from the island while a run is in flight. Hide
-   the idle play prompt then, purely in CSS — no React state, so starting a run
-   does not re-render the island. */
-[data-running] .play-prompt {
+/* The hero gets `data-phase` from the island. Hide the idle play prompt while
+   `running` and while `dead`, purely in CSS — no React state, so starting a run
+   does not re-render the island. The rule names the two hidden values
+   explicitly rather than using `:not([data-phase="idle"])`: before hydration
+   there is no attribute at all, and a `:not` selector would match on first
+   paint and flash the prompt away until the island mounts. Absent behaves like
+   `idle`, so the prompt ships visible and stays visible until a run starts.
+   `dead` is included because the band owns that moment with its own game-over
+   message; showing both would stack two messages on the same state. */
+[data-phase="running"] .play-prompt,
+[data-phase="dead"] .play-prompt {
 	display: none;
 }
 .hero-sky-section {
