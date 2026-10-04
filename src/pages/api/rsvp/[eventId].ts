@@ -1,6 +1,6 @@
+import { getEntry } from "astro:content";
 import fs from "node:fs";
 import path from "node:path";
-import { getEntry } from "astro:content";
 import type { APIRoute } from "astro";
 import {
 	sendHostNotification,
@@ -30,7 +30,7 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 		const data = await request.json();
 
 		// Format data as a single NDJSON line
-		const ndjsonLine = JSON.stringify(data) + "\n";
+		const ndjsonLine = `${JSON.stringify(data)}\n`;
 
 		// Define file path in your project or server storage
 		const filePath = path.resolve(process.cwd(), `data/${eventId}.ndjson`);
@@ -68,7 +68,9 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 					? data.dietary
 					: undefined;
 			const notes =
-				typeof data.notes === "string" && data.notes.trim() ? data.notes : undefined;
+				typeof data.notes === "string" && data.notes.trim()
+					? data.notes
+					: undefined;
 
 			const eventForEmail = {
 				id: event.id,

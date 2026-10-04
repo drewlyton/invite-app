@@ -21,7 +21,7 @@ const event = defineCollection({
 		end: z.string().optional(),
 		// Additional host notification emails for this event. Merged
 		// with the global HOST_NOTIFICATION_EMAILS env var at send time.
-		hosts: z.array(z.string().email()).optional(),
+		hosts: z.array(z.email()).optional(),
 	}),
 });
 

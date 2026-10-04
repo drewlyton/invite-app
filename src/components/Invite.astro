@@ -93,16 +93,12 @@ const CLOUD_PARALLAX_RATE = "0.30";
 		</div>
 	))}
 
-	{theme.balloons && (
-	<>
-		{theme.balloons.colors.map((color, i) => (
-			<div
-				class={`hero-balloons hero-balloons-${i} pointer-events-none absolute inset-0 motion-safe:animate-balloon-float`}
-				style={`color: ${color}; animation-delay: ${-i * 1.1}s;`}
-			/>
-		))}
-	</>
-)}
+	{theme.balloons?.colors.map((color, i) => (
+		<div
+			class={`hero-balloons hero-balloons-${i} pointer-events-none absolute inset-0 motion-safe:animate-balloon-float`}
+			style={`color: ${color}; animation-delay: ${-i * 1.1}s;`}
+		/>
+	))}
 
 	{theme.clouds && (
 	<>
@@ -174,14 +170,14 @@ const CLOUD_PARALLAX_RATE = "0.30";
 )}
 
 		{!theme.detailsBelowFold && (
-			<EventDetails
-				date={date}
-				time={time}
-				location={location}
-				rsvpBy={rsvp_by}
-				theme={theme}
-			/>
-		)}
+	<EventDetails
+		date={date}
+		time={time}
+		location={location}
+		rsvpBy={rsvp_by}
+		theme={theme}
+	/>
+)}
 	</div>
 	{theme.runner && (
 	<RunnerGame

@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
 import confetti from "canvas-confetti";
-import { User, Users, Minus, Plus } from "lucide-react";
+import { Minus, Plus, User, Users } from "lucide-react";
+import { type SubmitEvent, useState } from "react";
 
 interface Props {
 	eventId: string;
@@ -46,7 +46,7 @@ export default function RsvpForm({ eventId }: Props) {
 	const [submitted, setSubmitted] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+	async function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
 		e.preventDefault();
 		if (submitting) return;
 
@@ -112,11 +112,7 @@ export default function RsvpForm({ eventId }: Props) {
 	}
 
 	return (
-		<form
-			onSubmit={handleSubmit}
-			autoComplete="off"
-			className="space-y-5"
-		>
+		<form onSubmit={handleSubmit} autoComplete="off" className="space-y-5">
 			<h2 className="text-center text-xl font-semibold text-stone-900">
 				Will you be there?
 			</h2>
@@ -173,7 +169,10 @@ export default function RsvpForm({ eventId }: Props) {
 				<div className="overflow-hidden">
 					<div className="space-y-5">
 						<div>
-							<label htmlFor="rsvp-email" className="block text-sm text-stone-600">
+							<label
+								htmlFor="rsvp-email"
+								className="block text-sm text-stone-600"
+							>
 								Email
 							</label>
 							<input
@@ -189,7 +188,9 @@ export default function RsvpForm({ eventId }: Props) {
 						</div>
 
 						<div>
-							<span className="block text-sm text-stone-600">Are you bringing anyone?</span>
+							<span className="block text-sm text-stone-600">
+								Are you bringing anyone?
+							</span>
 							<div className="mt-2 grid grid-cols-2 gap-2">
 								<button
 									type="button"
@@ -229,9 +230,7 @@ export default function RsvpForm({ eventId }: Props) {
 										<div className="flex items-center gap-1">
 											<button
 												type="button"
-												onClick={() =>
-													setPartySize((p) => Math.max(2, p - 1))
-												}
+												onClick={() => setPartySize((p) => Math.max(2, p - 1))}
 												disabled={submitting || partySize <= 2}
 												aria-label="Decrease party size"
 												className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 transition focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -243,9 +242,7 @@ export default function RsvpForm({ eventId }: Props) {
 											</span>
 											<button
 												type="button"
-												onClick={() =>
-													setPartySize((p) => Math.min(10, p + 1))
-												}
+												onClick={() => setPartySize((p) => Math.min(10, p + 1))}
 												disabled={submitting || partySize >= 10}
 												aria-label="Increase party size"
 												className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 transition focus:outline-none focus:ring-1 focus:ring-inset focus:ring-stone-500 hover:border-stone-400 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -281,7 +278,10 @@ export default function RsvpForm({ eventId }: Props) {
 						</div>
 
 						<div>
-							<label htmlFor="rsvp-notes" className="block text-sm text-stone-600">
+							<label
+								htmlFor="rsvp-notes"
+								className="block text-sm text-stone-600"
+							>
 								Notes
 							</label>
 							<textarea
@@ -334,10 +334,7 @@ export default function RsvpForm({ eventId }: Props) {
 			</button>
 
 			{error && (
-				<p
-					role="alert"
-					className="text-center text-sm text-red-700"
-				>
+				<p role="alert" className="text-center text-sm text-red-700">
 					{error}
 				</p>
 			)}

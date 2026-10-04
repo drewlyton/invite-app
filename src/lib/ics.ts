@@ -1,4 +1,4 @@
-import { createEvent, type EventAttributes, type DateArray } from "ics";
+import { createEvent, type DateArray, type EventAttributes } from "ics";
 
 export interface EventForIcs {
 	id: string;
