@@ -245,16 +245,16 @@ export default function RunnerGame({
 				s.player.h * px,
 			);
 
-			// Arcade HUD on the canvas, so play never re-renders React.
-			ctx.fillStyle = textColor;
-			ctx.font = "12px ui-monospace, monospace";
-			ctx.textAlign = "right";
-			ctx.fillText(
-				`HI ${pad(s.highScore)}   ${pad(s.score)}`,
-				cssWidth - 6,
-				15,
-			);
-			ctx.textAlign = "left";
+			// Arcade HUD on the canvas, so play never re-renders React. Left-aligned,
+			// and not drawn at all while idle: there must be no score before the
+			// first play. It stays visible through `dead` so the final score is
+			// readable. Phase comes from `view(game)`, the renderer's only read path.
+			if (s.phase !== "idle") {
+				ctx.fillStyle = textColor;
+				ctx.font = "12px ui-monospace, monospace";
+				ctx.textAlign = "left";
+				ctx.fillText(`HI ${pad(s.highScore)}   ${pad(s.score)}`, 6, 15);
+			}
 		};
 
 		const frame = (time: number): void => {
