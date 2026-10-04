@@ -219,14 +219,17 @@ this to be narrower than the sentence above first claimed:
 - **Vertical positions shift** by `ΔgroundY` so that clearances from the ground
   line are preserved. "Only the visible window changes" is true horizontally
   only.
-- **The already-scheduled next spawn is not exactly fairness-invariant.** Its gap
-  was solved with `travelDistance = worldWidth + spawnMargin − playerX`; if the
-  band *widens* mid-run, that obstacle's arrival distance grows and its
-  precomputed gap can fall a few units short of the constraint (narrowing is
-  conservative). At the current numbers ~200 extra world units ≈ +5 units of
-  required gap, usually masked by the gap jitter. Making it exact requires storing
-  the last spawn distance and re-solving on resize; do that if the resize case ever
-  becomes reachable in practice.
+- **The already-scheduled next spawn is now exactly fairness-invariant**, and this
+  is worth understanding because it was not always so. Its gap is solved using
+  `travelDistance = worldWidth + spawnMargin − playerX`, so if the band *widens*
+  mid-run, that obstacle's arrival distance grows and a gap computed under the old
+  geometry can fall short of the constraint. Narrowing was always conservative;
+  widening was the hole, masked by the gap jitter. The fix: the state records
+  `prevSpawnDistance` plus the jitter factor used for the pending spawn, and
+  `resize()` re-solves `nextSpawnDistance` against the new geometry — guarded by
+  `nextSpawnDistance > distance`, since an obstacle already in flight must not be
+  moved. Assertion 5b covers a mid-run widening; assertion 5 alone only checks
+  invariance at fixed geometry and would not have caught this.
 
 ### Units and scaling
 
@@ -579,6 +582,25 @@ recurs roughly every 7s. This is the accepted trade for a lighter sky, not a bug
 but it is the reason the repetition is noticeable, and varying the sections would
 break the wrap rather than fix it.
 
+### Star colour and the origin speck
+
+Stars are painted with `currentColor` in both their `box-shadow` specks and their
+fill, so the colour comes from `color: var(--star-color)` on the star rules.
+`--star-color` is set on the hero from `theme.stars.color`. This was **dead for a
+while**: the variable was set but never consumed, so the stars silently painted
+hero text (`#1c1917`) instead of the configured `#44403c`. If star colour ever
+looks wrong, check that the layers still read `color`, not a hardcoded value.
+
+The `.hero-stars-*` elements are the **origin** of the speck field — the scattered
+specks are box-shadow offsets, and the element's own border box used to paint one
+more solid speck at the top-left of every section. Because the field is now a
+3-copy strip the island translates, that origin speck slid along the hero's top
+edge for the whole of a run, reading as a stray dot rather than a star. Dropping
+the element's own `background` removes it: outer box-shadow is not painted inside
+the border box, so the origin disappears and the scattered specks are untouched.
+Measured as an exact 16-pixel difference at `(0,0)–(3,3)` with zero pixels added
+elsewhere.
+
 ### Driving the offset
 
 - Source: `view(game).groundOffset`, which is world distance.
@@ -715,8 +737,14 @@ than hidden:
   `scripts/verify-runner.ts`, run with
   `node --experimental-strip-types scripts/verify-runner.ts` (non-zero exit on
   failure), and derive from `TUNING` rather than copies.
-- `public/clouds/cloud-large.svg` is now unreferenced by anything, since the game
-  replaced the bottom cloud layer. Delete it when convenient.
+- `public/clouds/cloud-large.svg` and `public/favicon.svg` were both unreferenced
+  and are **deleted**. (`Layout.astro` uses inline data-URI icons, so nothing
+  referenced the favicon file; it also tripped `a11y/noSvgWithoutTitle`.)
+- `npx astro check` is clean (0 errors, 0 warnings, 0 hints) and
+  `npx biome check .` passes, after adding `@types/canvas-confetti` and enabling
+  `css.parser.tailwindDirectives`. The repo-wide Biome pass also reformatted
+  unrelated files, including `cloud-small.svg` (26 rects before and after — pure
+  whitespace churn).
 - Sprites are still placeholder rectangles; step 4 is unbuilt.
 - `SKY_COPIES = 3`, shared by all layers. Only the cloud layer strictly needs 3
   (its ambient and player-driven shifts add and can reach two sections); stars
@@ -726,9 +754,14 @@ than hidden:
   is currently exactly viewport width. Periodicity holds only while the hero is at
   least as wide as the viewport; a narrower hero would need the specks re-expressed
   relative to the section.
-- `will-change: transform` is set on all seven sky strips, each 3× the hero width
-  and (for stars) full hero height. That is the standard way to keep parallax cheap,
-  but it promotes large compositor layers and has not been measured on a phone.
+- **`will-change` is gated, not always on.** `.hero-sky-strip` carries no static
+  hint; `[data-running] .hero-sky-strip { will-change: transform }` applies only
+  while a run is in flight, and the component sets/removes `data-running` on the
+  hero with the phase. Measured with CDP `LayerTree` at 800×800: idle went from 46
+  layers (7 promoted) to **27 with 1**; during a run it is 45 with all 7 promoted.
+  Dropping `will-change` outright is **not** equivalent — with the JS-written
+  transform but no hint, Chrome promoted none of the six star strips during play,
+  so that shortcut trades idle cost for lost play-time compositing.
 - The star layers were restructured into the periodic multi-copy form for **every**
   theme that declares `stars`, which includes `game-night`. It no longer gains any
   motion (stars have no ambient drift), so the only difference there is structural.
@@ -771,6 +804,10 @@ There is no test runner in this repo, so:
   - **Resize**: the run survives a geometry change — distance, score, phase,
     obstacle `x`, and ground clearances are unchanged, and the run keeps
     progressing.
+  - **Resize widening keeps the pending spawn fair**: widen the band between two
+    spawns and assert the pending gap still satisfies
+    `gap >= speedAtArrival * airTime + obstacleWidth`, keeping the jitter factor.
+    This is the case assertion 5 cannot see, because it holds geometry fixed.
   - **Vertical fit at the tightest geometry**: sweep the band-height clamp and a
     spread of widths, take the smallest `worldHeight`, and assert
     `groundMargin <= worldHeight - apex - playerHeight` plus that the sprite top at
