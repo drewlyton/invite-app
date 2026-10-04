@@ -83,12 +83,15 @@ export const TUNING = {
 	// raises the ground. Bounded by the vertical fit: at the tightest geometry
 	// (worldHeight == targetWorldHeight == 95) it must satisfy
 	// groundMargin <= worldHeight - apex - playerHeight == 27.98 (nominal),
-	// or the player's sprite top leaves the band at the apex of a jump. There is
-	// no other lever for this ceiling: band height cancels out because
-	// worldHeight = bandHeight / (bandHeight / targetWorldHeight), so raising the
-	// band-height clamp does not raise the ground. Only raising targetWorldHeight
-	// does, at the cost of smaller sprites. Guarded by the vertical fit assertion
-	// in scripts/verify-runner.ts.
+	// or the player's sprite top leaves the band at the apex of a jump. The
+	// guaranteed ceiling moves only with targetWorldHeight: while the height term
+	// binds (bandHeight <= pixelScaleMax * targetWorldHeight == 285px, true for
+	// the whole band clamp) band height cancels out of
+	// worldHeight = bandHeight / (bandHeight / targetWorldHeight), and the floor
+	// is the minimum over viewports, so raising the band-height clamp max cannot
+	// raise it. Raising targetWorldHeight can, at the cost of smaller sprites;
+	// reducing apex or playerHeight also can, but those are physics/art changes.
+	// Guarded by the vertical fit assertion in scripts/verify-runner.ts.
 	groundMargin: 24,
 
 	// Player. Jump-only: there is no duck pose and no duck hitbox.
