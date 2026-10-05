@@ -403,12 +403,14 @@ than hard.
 - Sprites blitted as batched rects: one `beginPath()`, a `rect()` per filled
   pixel, one `fill()`. Cheaper than N `fillRect()` calls and keeps the pixel grid
   crisp.
-- **The player is a multi-colour sprite blitted by colour.** `drawBitmap` groups
+- **The player is a palette sprite blitted by colour.** `drawBitmap` groups
   the bitmap's cells by palette colour and emits one `beginPath()` /
   `rect()`-per-pixel / `fill()` per distinct colour, skipping transparent cells.
   It takes `s.player.x`, `s.player.y` and `pixelScale` unchanged, so the sprite
   maps 1:1 onto the 16×22 player box with no anchoring maths in the renderer.
-  Obstacles are still one `fillRect` each.
+  The palette is a three-step greyscale ramp; the bitmaps are currently
+  placeholders (see [Sprites](#sprites)). Obstacles are still one `fillRect`
+  each.
 - **The score lives in the hero's status line, not on the canvas.** The island
   finds `[data-runner-status]` once and rewrites its `textContent` from the rAF
   loop, and only when the formatted string changes. The old canvas HUD block is
@@ -466,16 +468,18 @@ export const PLAYER_SPRITES: Readonly<Record<Pose, readonly Bitmap[]>>;
 export function drawBitmap(ctx, bitmap, palette, x, y, px): void;   // batched blit
 ```
 
-The palette is **semantic and multi-colour** (outline/eyes, hair and beard, skin,
-freckle, glasses frame, glasses lens, clothing, pants, shoe, board deck, wheel,
-wheel highlight), not the single theme tint the original sketch assumed. The
-character is a guy with black curly hair, a short black beard, a lightly
-freckled face and square black glasses; the blue shirt is deliberately distinct
-from the muted grey obstacle colour so the player reads on the white hero. The
-colours are fixed in the sprite module — only the ground and obstacles take
-`theme.runner.color` — which is recorded under **Known divergences**.
+The palette is **a three-step greyscale ramp of colours the page already uses**
+(`o` = hero ink, `m` = ground tone, `l` = runner/cloud tone), so the finished
+sprite belongs to the monochrome `game-night-light` hero rather than introducing a
+new colour system. Add a key to `PLAYER_PALETTE` if the art needs a fourth step;
+the theme colour still drives the ground and the obstacle rectangles.
 
-Implemented frames (step 4 — no longer placeholders):
+**The pose graph is implemented and wired end to end; the bitmaps are
+placeholders.** Every pose currently draws the same neutral box (`placeholder()`
+in `runner-sprites.ts`), which keeps the blit path, the component and the two
+verification scripts honest while the character art is redrawn. The frame counts
+below are part of the contract and are asserted by `scripts/verify-sprites.ts`;
+only the pixels are pending.
 
 | Pose | Frames | Used for |
 | --- | --- | --- |
@@ -932,10 +936,12 @@ event, which is acceptable because `game-night-light` is this event's theme.
    loop, pause handling.
 3. Wire `theme.runner`, `Invite.astro`, and the `data-hero` attribute; delete the
    bottom cloud layer and its dead CSS.
-4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`. **Done** — the
-   five player poses and the palette are in `runner-sprites.ts`, selected by the
-   pose union in `runner.ts` and blitted by `drawBitmap` in `RunnerGame.tsx`.
-   Obstacle art remains placeholder rectangles.
+4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`. **Infrastructure
+   done, art pending** — the five player poses, the greyscale palette and the
+   blit path are wired through `runner.ts`'s pose union and `RunnerGame.tsx`'s
+   `drawBitmap` call, and the frame counts are asserted. The bitmaps themselves
+   are still placeholders and need a real character. Obstacle art also remains
+   placeholder rectangles.
 5. Focusable region, offscreen instructions, reduced-motion branch, contrast pass.
 6. Optional: score-30 confetti milestone.
 7. `npm run lint` and a `astro build`.
@@ -1006,12 +1012,17 @@ mirrors. The spawner must recompute airtime from the *active* tuning rather than
 the module default, or per-run overrides would silently break the gap guarantee.
 - Duck is gone as of tuning round 1; the implementation follows the jump-only
 input model specified above.
-- **The player sprite uses a fixed palette** in `runner-sprites.ts` rather than
-`theme.runner.color`. The original sketch assumed one recolourable bitmap per
-theme, but a multi-colour character (black hair, skin, glasses, blue shirt)
-cannot come from a single tint. The theme colour still drives the ground and the
-obstacle rectangles.
-- Obstacle art is still placeholder rectangles; only the player is hand-authored.
+- **The player sprite carries its own greyscale palette** in `runner-sprites.ts`
+rather than a single `theme.runner.color` tint. The original sketch assumed one
+recolourable bitmap per theme; a character with a face cannot come from a single
+tint without turning into a silhouette. The palette is three neutrals the page
+already uses, and the theme colour still drives the ground and the obstacle
+rectangles.
+- **The player bitmaps are placeholders.** The pose graph, frame counts, palette,
+blit path and verification scripts are complete, but every pose currently draws
+the same neutral box. Replacing `PLACEHOLDER` in `runner-sprites.ts` is the
+remaining art step; nothing else should need to change.
+- Obstacle art is also placeholder rectangles.
 
 ## Verification
 
