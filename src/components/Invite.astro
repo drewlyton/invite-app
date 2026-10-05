@@ -164,8 +164,9 @@ const detailsGroundStyle = groundColor
 	   sky layers (`.hero-content` is z-10, the cloud strip is z-0) and the 44px
 	   minimum keeps it tappable. It is deliberately placed before `.hero-content`
 	   and the game band in the DOM: the band is focused on load, so forward Tab
-	   from the band skips the button and continues into the page below the hero,
-	   while Shift+Tab reaches the button directly. */}
+	   from the band reaches the hero's ground "RSVP by …" link (when the runner
+	   theme renders one) and then continues into the page below the hero, while
+	   Shift+Tab reaches the button directly. */}
 	{/* `bg-white` is opaque on purpose: the sky layers must not read through the
 	   button, and an `opacity-*` on the element would make the white translucent.
 	   The understated at-rest look comes from the 70% colour instead, so `text`
@@ -185,7 +186,7 @@ const detailsGroundStyle = groundColor
 	<div
 		class={`hero-content relative z-10 flex flex-col items-center ${
 	theme.runner
-		? "pb-[clamp(160px,22svh,200px)] [@media(max-height:639px)]:pb-0"
+		? "pb-[clamp(160px,22svh,200px)] [@media(max-height:639px)]:pb-12"
 		: ""
 }`}
 	>
@@ -262,10 +263,13 @@ const detailsGroundStyle = groundColor
 )}
 	{/* When the runner theme moves its details below the fold, the "RSVP by …"
 	   link is the hero's only scroll cue, so it renders here in the game ground
-	   instead of with the details. A sibling of the band, not a child: the band
-	   handles Space/ArrowUp/W on its own keydown (a focusable link inside it
-	   would let Space start the game instead of activating the link) and is
-	   `display: none` below ~640px viewport height (which would drop the cue).
+	   instead of with the details. A sibling of the band, not a child. A native
+	   `<a href>` is activated by Enter, not Space, so the link itself is not what
+	   Space is for: the band's own keydown claims Space/ArrowUp/W (jump/start)
+	   and, in the `dead` phase, Space/Enter (restart), so a focusable link inside
+	   the band would have those keys captured and preventDefault-ed instead of
+	   getting the browser's normal link and scroll behaviour. The band is also
+	   `display: none` below ~640px viewport height, which would drop the cue.
 	   `bottom-2` centres the ~20px line in the smallest (~36px) ground, and
 	   `z-20` puts it above the band (`z-0`) and `.hero-content` (`z-10`) without
 	   overlapping the content. No `pointer-events-none`: the hero's tap handler
@@ -283,8 +287,9 @@ const detailsGroundStyle = groundColor
    drop the divider, because below the fold there is nothing above them to
    divide from, and they carry the ground tint so the section reads as the game
    ground continuing. The top and bottom padding match, so the date/time/
-   location block and the RSVP link sit centred in the tinted band rather than
-   hugging its top edge. */}
+   location block sits centred in the tinted band rather than hugging its top
+   edge. The runner theme's RSVP link is not here (`showRsvp={!theme.runner}`);
+   it stays in the hero's ground. */}
 {theme.detailsBelowFold && (
 	<section
 		class="relative px-6 pt-10 pb-10 text-center sm:pt-14 sm:pb-14"

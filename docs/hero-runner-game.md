@@ -486,9 +486,12 @@ band.
 
 Tab order follows DOM order. The hero content currently renders after the cloud
 layers, so if the game element were placed first it would take the **first** tab
-stop, ahead of the RSVP link. Render the game element **last in DOM order** and
-position it with `absolute bottom-0 z-0`. Explicit `z-index` means paint order is
-independent of DOM order, so we get the right tab order and the right stacking.
+stop, ahead of the RSVP link. Render the game element **last among the hero's
+content** and position it with `absolute bottom-0 z-0`. Explicit `z-index` means
+paint order is independent of DOM order, so we get the right tab order and the
+right stacking. A runner theme that moves its details below the fold renders the
+compact "RSVP by …" link *after* the band, in the game ground, so Tab leaves the
+band for that link before continuing into the page.
 
 ### Tap-to-play without breaking scroll or links
 
@@ -519,8 +522,9 @@ both the requested behaviour and the reason the page stays cheap.
   remove it rather than leaving a trap.
 - The game occupies a bottom band (`clamp(160px, 22svh, 200px)` as implemented,
   hidden below a ~640px viewport height). The hero content block gains bottom
-  padding so text never collides with the player on a short screen, and the
-  padding resets when the band is hidden.
+  padding so text never collides with the player on a short screen; when the band
+  is hidden the padding shrinks to a small reserve (`pb-12`) that still keeps the
+  content clear of the ground RSVP link pinned at the hero's bottom.
 - Game sits at `z-0`, `.hero-content` stays `z-10`.
 - Colour: render in the same muted tone family as the clouds (`#d6d3d1`-ish) from
   `theme.runner.color`, not a bold dark silhouette.
@@ -551,13 +555,16 @@ theme's ground tint on its own.
 For a **runner** theme the "RSVP by …" link does not move below the fold with the
 rest of the details. It renders in the hero's game ground, in the compact `ground`
 size, so the scroll cue stays with the hero that owns the game. It is a
-**sibling** of the band, not a child: the band handles `Space`/`ArrowUp`/`W` on
-its own keydown, so a focusable link inside it would let `Space` start or jump the
-game instead of activating the link, and the band is `display: none` below ~640px
+**sibling** of the band, not a child. A native `<a href>` is activated by `Enter`,
+not `Space`, so the reason is not "Space would activate the link": the band
+handles `Space`/`ArrowUp`/`W` on its own keydown (jump/start) and, in the `dead`
+phase, `Space`/`Enter` (restart), so a focusable link inside the band would have
+those keys captured and `preventDefault`-ed instead of getting the browser's
+normal link and scroll behaviour. The band is also `display: none` below ~640px
 viewport height, which would drop the cue entirely. A runner-less below-fold theme
 has no ground to put it in, so it keeps the link in `EventDetails` with the rest
 of the block; that combination does not exist today (only `game-night-light` sets
-`detailsBelowFold`, and it also has a runner), but `ShowRsvp={!theme.runner}`
+`detailsBelowFold`, and it also has a runner), but `showRsvp={!theme.runner}`
 keeps the two concerns independent.
 
 ### The status line
@@ -829,9 +836,9 @@ event, which is acceptable because `game-night-light` is this event's theme.
 
   Two consequences, both deliberate:
   - It **supersedes the earlier "tab order reaches the RSVP link before the game
-    region" requirement.** DOM order is unchanged — the game region is still last —
-    but initial focus now lands on the band, and the RSVP link is reached forward
-    with Tab.
+    region" requirement.** For a runner + below-fold theme the game region is
+    followed in the DOM by the hero's ground RSVP link, but initial focus is still
+    the band by design, and the RSVP link is reached forward with Tab.
   - The region is `role="group"`, **not** `role="application"`. `application`
     promises assistive tech that keyboard input is being handed over, and since the
     region is now focused automatically on load, that would drop a screen-reader user
@@ -1009,8 +1016,9 @@ hero):
 
 - [ ] Typing a name and toggling party size in the RSVP form never moves the player.
 - [ ] On load the band holds focus and Space neither scrolls nor jumps the viewport.
-      (This supersedes the older "tab order reaches the RSVP link first" check — DOM
-      order still puts the game last, but initial focus is the band by design.)
+      (This supersedes the older "tab order reaches the RSVP link first" check. For
+      a runner + below-fold theme the hero's ground RSVP link follows the game
+      region in the DOM, but initial focus is the band by design.)
 - [ ] Blur the band by clicking the page background, then click the hero: focus
       returns to the band and Space jumps rather than scrolling.
 - [ ] Tapping the "RSVP by…" hero link navigates and does not start the game.
