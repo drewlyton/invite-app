@@ -7,7 +7,9 @@ while high flyers pass harmlessly overhead. **Jump is the only move** — there 
 no duck. Scope is the hero background only — the RSVP form, page
 content, `.ics` generation, and OG images are untouched.
 
-Status: **planned, not implemented.**
+Status: **implemented.** The game is live in the `game-night-light` hero. The
+leaderboard that hangs off its game-over flow is a separate feature, owned by
+[`leaderboard-plan.md`](./leaderboard-plan.md).
 
 ## Decisions
 
@@ -543,7 +545,9 @@ where play is never offered.
 
 The band keeps its own **contextual** game-over line (`Game over — press space to
 retry`), which belongs near the action, so the prompt is hidden for **both**
-`running` and `dead` and the same moment never shows two messages.
+`running` and `dead` and the same moment never shows two messages. That line is in
+turn suppressed while the leaderboard dialog is open, so the dialog and the band do
+not announce the same moment twice — see below.
 
 Two details here are load-bearing, and both were learned the hard way:
 
@@ -558,6 +562,23 @@ Two details here are load-bearing, and both were learned the hard way:
   could not distinguish "mid-session, just crashed" from "never started" — so the
   prompt reappeared on the game-over screen. A boolean cannot express this; the
   attribute has to carry the phase.
+
+### The leaderboard dialog and the `HIGH SCORES` button
+
+The scoring feature has its own document — [`leaderboard-plan.md`](./leaderboard-plan.md)
+owns the storage, the API, the trigger and the board's design. Two of its pieces
+touch the hero and are recorded here because they change the game-over behaviour:
+
+- A `HIGH SCORES` button is server-rendered in the hero (top-right, above the sky
+  layers, in the theme's font) and opens the board read-only. It works under reduced
+  motion and when the band is hidden by a short viewport, because viewing the
+  standings is not play.
+- On a new personal best the island opens a native `<dialog>` modal over the hero.
+  While it is open the band's `Game over — press space to retry` line is **hidden**,
+  so the dialog and the band never announce the same moment; the line returns as soon
+  as the dialog closes. The dialog is a **sibling** of the band, never a child: below
+  ~640px viewport height the band is `display: none`, and a modal inside a hidden
+  subtree does not render even from the top layer.
 
 ### Two consequences of the layout split
 
@@ -767,6 +788,13 @@ event, which is acceptable because `game-night-light` is this event's theme.
     modes. Biome's `a11y/useSemanticElements` wants `<fieldset>` for `role="group"`,
     which is form semantics and wrong here, hence one inline `biome-ignore` with that
     reason.
+- The leaderboard is reachable without playing, and without the game being
+  interactive: the hero's `HIGH SCORES` button opens a read-only board under reduced
+  motion too. Its dialog is a native modal, so focus is trapped while it is open and
+  `Escape` closes it. On close, focus returns to the **band** after a game-over open
+  (so `Space` still means retry) and to the **button** after a button open. A new
+  personal best focuses the handle input; `Enter` submits and `Space` closes. See
+  [`leaderboard-plan.md`](./leaderboard-plan.md) for the full choreography.
 
 ## Performance and lifecycle
 
@@ -941,6 +969,12 @@ hero):
       hidden while running, and **hidden again on the game-over screen** so it never
       stacks with the band's message. It must also be visible before hydration (no
       flash on load).
+- [ ] The `HIGH SCORES` button opens the board without starting the game, including
+      under reduced motion and on a short viewport where the band is hidden.
+- [ ] While the game-over dialog is open the band's "Game over — press space to
+      retry" line is hidden, and it comes back when the dialog closes.
+- [ ] After a game-over dialog closes, focus is on the band and `Space` retries; after
+      a `HIGH SCORES` open, focus is back on the button.
 - [ ] No score is drawn before the first play; it appears at the top-left after
       starting and remains through the game-over state.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
@@ -951,5 +985,7 @@ hero):
 
 ## Non-goals
 
-No backend, no leaderboard, no sound, no mobile-specific controls, no inverted
-palette, no changes to OG image generation, `.ics` output, or the RSVP API.
+No sound, no mobile-specific controls, no inverted palette, no changes to OG image
+generation, `.ics` output, or the RSVP API. The leaderboard is a companion feature
+documented in [`leaderboard-plan.md`](./leaderboard-plan.md), not part of this
+game's scope.

@@ -7,8 +7,11 @@ Companion to [`hero-runner-game.md`](./hero-runner-game.md), which owns the game
 its band, phases, focus behaviour and `Space` semantics. This document owns the scoring
 feature and the staged plan for building it.
 
-Status: **Stages 1–3 implemented.** Stage 4 is a verification-and-docs pass. Stages are
-implemented one at a time and each is reviewed before the next is dispatched.
+Status: **complete.** All four stages are implemented, and the Stage 4 pass verified
+the flow end to end in a real browser: 390px with the dialog scrolling rather than
+overflowing, reduced motion, keyboard-only, `crypto.randomUUID` unavailable, `fetch`
+failing, the RSVP regression, and handle prefill. Stages were implemented one at a
+time and each was reviewed before the next was dispatched.
 
 ## Settled decisions
 
@@ -246,7 +249,16 @@ The pending row's rank is a **lower bound**, not a fact: the server already trun
 board to `BOARD_LIMIT`, so a score worse than every fetched row only has a known floor. The
 pending row is deliberately **not** re-truncated, so a player always sees their own score
 — at rank 11 if that is where it lands — rather than watching it silently vanish.
-```
+
+Stage 4 found the implementation did not honour that last sentence: the row survived
+while the submit was pending, but on success it was replaced by the server's
+truncated board, so a score below the cut vanished at the moment it was posted. The
+dialog now appends the submitted entry when it is absent from the returned board.
+Stage 4 also found that a *second* personal best in the same session opened with the
+prefilled handle unfocused — the "park focus after submit" effect ran against the
+previous submit's still-set state and took focus from the input, so `Enter` did
+nothing. Resetting that state on close fixes it. Both were caught by browser
+measurement, not by reading the code.
 
 A discriminated union rather than `entries | null`, so "no scores yet" and "not fetched
 yet" cannot be confused — they render different things.
