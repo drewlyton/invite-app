@@ -9,7 +9,7 @@ import {
 	view,
 } from "../lib/runner";
 import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
-import { DEAD_STATUS, IDLE_STATUS, runningStatus } from "../lib/runner-status";
+import { deadStatus, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
 
@@ -385,16 +385,20 @@ export default function RunnerGame({
 			lastTime = 0;
 			accumulator = 0;
 			if (view(game).phase === "dead") {
-				persistHighScore(view(game).highScore);
+				// One read of the final state: the score line stays on screen under the
+				// game-over message, and the same numbers drive persistence and the
+				// personal-best trigger below.
+				const s = view(game);
+				persistHighScore(s.highScore);
 				// Write "dead", do not delete the attribute: the hero should still say
 				// which phase the session is in, and nothing reads it as a boolean.
 				setPhaseAttr("dead");
-				writeStatus(DEAD_STATUS);
+				writeStatus(deadStatus(s.highScore, s.score));
 				// The trigger: this run beat the best as it stood before the run began.
 				// The first ever run always qualifies (the snapshot starts at 0), which
 				// is how a first-time player discovers the board. A score of 0 does not
 				// qualify, though `floor(distance / scoreUnit)` makes it unreachable.
-				const finalScore = view(game).score;
+				const finalScore = s.score;
 				if (finalScore > runBestRef.current && finalScore > 0) {
 					openSourceRef.current = "band";
 					setPendingScore(finalScore);

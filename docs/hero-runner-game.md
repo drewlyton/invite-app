@@ -554,7 +554,12 @@ the idle prompt and rewritten in sequence by the island:
 | --- | --- |
 | idle | `Click / Space / Tap to Play` |
 | running | `HI 00000   00012` (live high score and score) |
-| dead | `Game over — press space to retry` |
+| dead | `HI 00000   00012` then `Game over — press space to retry`, on two lines |
+
+The dead state keeps the final score on screen **alongside** the game-over
+message rather than replacing it, so `deadStatus(highScore, score)` is the
+running line, a newline, then the game-over line. `DEAD_STATUS` stays the single
+game-over line; the island writes the composed string.
 
 It lives in the hero content rather than the canvas band, because that is where
 the eye already is, and the band's own space is needed for the game. It is hidden
@@ -567,10 +572,14 @@ Four details here are load-bearing, and the first two were learned the hard way:
   is visible before hydration and with JS disabled, and the live score never
   touches React state.
 - **The slot reserves a constant height.** The line sits in a grid cell beside an
-  invisible spacer holding the tallest message, so the idle prompt wrapping on a
-  narrow phone cannot resize the slot and switching states cannot shift the hero.
-  Switching does **not** use `display: none`, which is exactly the shift the old
-  CSS rule caused.
+  invisible spacer holding the tallest message — the dead state's two lines,
+  rendered as `deadStatus(0, 0)`. Its zero-padded widths are constant, so the
+  zero scores reserve exactly the box any real final score needs. The spacer has
+  to carry `whitespace-pre-wrap` as well, or the newline would collapse and the
+  reserved height would be wrong. This is what stops the idle prompt wrapping on
+  a narrow phone from resizing the slot, and stops switching states from shifting
+  the hero. Switching does **not** use `display: none`, which is exactly the
+  shift the old CSS rule caused.
 - **The island still writes `data-phase`** (`"idle" | "running" | "dead"`) on the
   hero, but its only CSS consumer now is the sky-strip `will-change` promotion; the
   old `[data-phase="running"] .play-prompt` hide rule is deleted. The three values
@@ -990,10 +999,11 @@ hero):
 - [ ] No obstacle is ever unclearable at max speed.
 - [ ] Hero text stays readable over the sprites.
 - [ ] The status line sits under the subtitle and is legible; it shows the idle
-      prompt at rest, the live score while running, and the game-over message on
-      death. It must be visible before hydration (no flash on load), and the slot
-      must keep a constant height as it changes, including when the idle prompt
-      wraps on a narrow phone.
+      prompt at rest, the live score while running, and on death the final score
+      **and** the game-over message together on two lines. It must be visible
+      before hydration (no flash on load), and the slot must keep a constant
+      height as it changes, including when the idle prompt wraps on a narrow
+      phone.
 - [ ] The `HIGH SCORES` button opens the board without starting the game, including
       under reduced motion and on a short viewport where the band is hidden.
 - [ ] While the game-over dialog is open the modal covers the status line's
@@ -1001,8 +1011,8 @@ hero):
 - [ ] After a game-over dialog closes, focus is on the band and `Space` retries; after
       a `HIGH SCORES` open, focus is back on the button.
 - [ ] No score is shown before the first play; it appears in the status line when
-      a run starts, shows the live score while running, and is replaced by the
-      game-over message once the run ends.
+      a run starts, shows the live score while running, and on death stays visible
+      above the game-over message.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
       still distinguishable against it.
 - [ ] The raised ground does not make the playfield feel cramped above the line.

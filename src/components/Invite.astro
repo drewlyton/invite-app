@@ -1,7 +1,7 @@
 ---
 import type { CollectionEntry } from "astro:content";
 import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
-import { DEAD_STATUS, IDLE_STATUS } from "../lib/runner-status";
+import { deadStatus, IDLE_STATUS } from "../lib/runner-status";
 import type { Theme } from "../lib/themes";
 import EventDetails from "./EventDetails.astro";
 import RunnerGame from "./RunnerGame";
@@ -211,16 +211,24 @@ const detailsGroundStyle = groundColor
 		{/* One status line for all three phases, in the play prompt's old slot. The
 		   island rewrites this single element with `textContent`, so play never
 		   re-renders React. The invisible span is a spacer holding the tallest
-		   message: without it the slot would resize when the state changes, and on
-		   a narrow phone the idle prompt could wrap without the slot accounting
-		   for it. `motion-reduce:hidden` because play is not offered there.
-		   `whitespace-pre-wrap` keeps the running message's three spaces between
-		   the two score columns, so the arcade columns stay aligned, while still
-		   letting the idle and game-over messages wrap. */}
+		   message — the dead state's two lines (score, then game-over) — via
+		   `deadStatus(0, 0)`, whose zero-padded widths reserve the same box as any
+		   real score. Without it the slot would resize when the state changes, and
+		   on a narrow phone the idle prompt could wrap without the slot accounting
+		   for it. The spacer carries `whitespace-pre-wrap` too, or the dead
+		   message's newline would collapse and the reserved height would be wrong.
+		   `motion-reduce:hidden` because play is not offered there.
+		   `whitespace-pre-wrap` on the visible line keeps the running message's
+		   three spaces between the two score columns — so the arcade columns stay
+		   aligned — and renders the dead message's newline, while still letting the
+		   idle and game-over messages wrap. */}
 		{theme.runner && (
 	<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
-		<span aria-hidden="true" class="invisible col-start-1 row-start-1">
-			{DEAD_STATUS}
+		<span
+			aria-hidden="true"
+			class="invisible col-start-1 row-start-1 whitespace-pre-wrap"
+		>
+			{deadStatus(0, 0)}
 		</span>
 		<p data-runner-status class="col-start-1 row-start-1 whitespace-pre-wrap">
 			{IDLE_STATUS}
