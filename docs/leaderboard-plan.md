@@ -7,8 +7,8 @@ Companion to [`hero-runner-game.md`](./hero-runner-game.md), which owns the game
 its band, phases, focus behaviour and `Space` semantics. This document owns the scoring
 feature and the staged plan for building it.
 
-Status: **planned.** Stages are implemented one at a time and each is reviewed before the
-next is dispatched.
+Status: **Stages 1–2 implemented.** Stages are implemented one at a time and each is
+reviewed before the next is dispatched.
 
 ## Settled decisions
 
@@ -202,6 +202,26 @@ is rendered in `Invite.astro` as server-rendered markup (so its styling and them
 live where the theme does) and the island binds a click to it, matching how the island
 already finds `[data-hero]` and `[data-parallax]`.
 
+`Leaderboard`'s interface, as built:
+
+```ts
+type BoardState =
+  | { status: "loading" }
+  | { status: "ready"; board: ScoreEntry[] }
+  | { status: "error" };
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  state: BoardState;
+  onRetry: () => void;
+  pendingScore?: number;   // Stage 3 only; its absence is what keeps the board read-only
+}
+```
+
+A discriminated union rather than `entries | null`, so "no scores yet" and "not fetched
+yet" cannot be confused — they render different things.
+
 ### Focus choreography
 
 This matters because `Space` is the only game button, so focus *is* the input routing.
@@ -209,9 +229,15 @@ This matters because `Space` is the only game button, so focus *is* the input ro
 - **On open:** focus the handle input in the personal-best mode; focus the dialog itself
   in read-only mode.
 - **On close:** return focus to the **band** when opened from game over, so `Space` still
-  means retry. Return it to the **button** when opened from the button — deliberately not
-  the band, because a focused button would make `Space` re-open the leaderboard instead of
-  playing.
+  means retry. Return it to the **button** when opened from the button, because the trigger
+  is where a keyboard user left off — the conventional rule, and returning focus to the
+  band instead would teleport them to the bottom of the hero.
+
+  The tradeoff that comes with it, stated honestly: **with the button focused, `Space`
+  re-opens the board rather than playing.** Accepted, because the button is a deliberate
+  "let me look at the scores" action and the game is still one click or tap away. An
+  earlier revision of this document justified returning focus to the button on the grounds
+  that it *avoided* that problem, which is exactly backwards.
 - **`Space` closes** (skip/retry) and **`Enter` submits.** This preserves the existing
   reflex exactly — mashing space after dying just starts another run — and makes an
   accidental blank submit impossible.
@@ -224,6 +250,14 @@ would be **clipped by the hero** and would have to fight the sky layers for stac
 Top-layer content is not subject to ancestor clipping or stacking contexts, so
 `showModal()` escapes all of that for free and additionally provides focus trapping,
 `Escape`, page inertness and `::backdrop`.
+
+**The dialog must be a sibling of the game band, never a child of it.** Below ~640px
+viewport height the band is `display: none`, and the top layer does not override an
+ancestor's `display: none` — a modal inside a hidden subtree does not render. Since the
+band is hidden exactly when it is short (a phone in landscape, a short laptop window), and
+the `HIGH SCORES` button is then the *only* way to reach the board, nesting the dialog
+inside the band would make that button silently do nothing in the one case where it matters
+most.
 
 ### Fetching, and failing
 
@@ -255,10 +289,13 @@ Arcade high-score table, matching the in-game HUD so the DOM board and the canva
 one system:
 
 - Rank, handle, score. `Press Start 2P`, uppercase.
-- Scores **zero-padded and right-aligned** using the same 5-wide padding the canvas HUD
-  uses, so columns line up like an arcade table.
+- Scores **zero-padded and right-aligned** through `formatScore` in
+  `src/lib/score-format.ts`, which owns the single `SCORE_DIGITS` constant shared with the
+  canvas HUD. The width is deliberately **not** written down here — this project has been
+  bitten repeatedly by duplicated constants, and two columns that disagree would make the
+  DOM board and the canvas read as different systems.
 - The just-submitted row gets a `NEW` badge; the visitor's own rows are highlighted.
-- Empty state ("No scores yet"), loading state, error-with-retry state.
+- Empty state ("No scores yet — be the first"), loading state, error-with-retry state.
 - Must stay readable and scrollable at 390px wide. `Press Start 2P` glyphs are roughly
   square, so 8 characters plus a rank and a 5-digit score is already wide.
 - Untrusted handles render as **text nodes only** — never `innerHTML`. This is the first
