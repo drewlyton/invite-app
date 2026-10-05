@@ -42,7 +42,7 @@ src/lib/runner.ts              pure simulation — physics, spawns, collision, s
 src/lib/runner-sprites.ts      sprite bitmaps + blit helper
 src/components/RunnerGame.tsx  React island — canvas, clock, input, lifecycle
 src/lib/themes.ts              add `runner` to the Theme type
-src/components/Invite.astro    render <RunnerGame client:idle /> when theme.runner
+src/components/Invite.astro    render <RunnerGame client:load /> when theme.runner
 src/pages/events/[eventId].astro  unchanged (themeStyle already flows through)
 ```
 
@@ -697,9 +697,24 @@ detailsBelowFold: boolean;   // required: true renders EventDetails after the he
 `detailsBelowFold` is `true` only on `game-night-light`.
 
 Set it on `game-night-light` (and leave `null` on `default`, `game-night`, and
-`birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:idle … />}`.
-`client:idle` keeps the game off the critical path — it must not compete with
-first paint or LCP.
+`birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:load … />}`.
+
+**`client:load`, not `client:idle`, and the reason is visual rather than
+performance.** `idle` was the original choice, to keep the island off the critical
+path. But its cost turned out to be a *visible pop-in*: `client:idle` hydrates on
+`requestIdleCallback` with no `timeout` passed, so it fires genuinely after first
+paint — and because the band has **no server-rendered appearance whatsoever** (no
+background utility, and a `<canvas>` is always empty in HTML), the hero rendered
+with an empty strip where the ground and player should be. The invite text, stars,
+clouds, and the play prompt are all server-rendered and painted immediately, so the
+game visibly arrived late and the prompt sat over an empty band in the meantime.
+
+`client:load` hydrates as soon as the module loads, so the ground is drawn with the
+rest of the page. The island is small and its first draw is cheap, so the cost of
+competing with initial load is accepted. If that trade is ever revisited, note that
+the alternative to `client:load` is not "go back to `idle`" — it is "server-render a
+CSS approximation of the idle ground", which adds a second rendering path that has
+to stay pixel-consistent with the canvas.
 
 The optional milestone lives in the theme, not the event frontmatter, so it needs
 no `content.config.ts` schema change. Score 30 + "Happy 30th!" is coupled to this
