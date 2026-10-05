@@ -8,6 +8,7 @@ import {
 	step,
 	view,
 } from "../lib/runner";
+import { DEAD_STATUS } from "../lib/runner-status";
 import { formatScore } from "../lib/score-format";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
@@ -35,8 +36,9 @@ const INTERACTIVE_SELECTOR =
  * Everything drawn comes from `view(game)`; nothing in this file reads Game
  * internals. The simulation is pure, so the only mutable state here is the
  * clock, the DOM sizing and the list of currently held keys. The score is
- * painted on the canvas, so React does not re-render during play — the only
- * state transitions are the ones that change the DOM (hint text / game over).
+ * written straight to the hero's status element, so React does not re-render
+ * during play — React state only covers the dialog and the reduced-motion
+ * `interactive` flag.
  */
 export default function RunnerGame({
 	eventId,
@@ -46,7 +48,6 @@ export default function RunnerGame({
 }: Props) {
 	const bandRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
-	const [phase, setPhase] = useState<Phase>("idle");
 	const [interactive, setInteractive] = useState(false);
 	const hintId = useId();
 	const groundColor = ground ?? color;
@@ -70,7 +71,7 @@ export default function RunnerGame({
 	 * when it is not (lower), and the dialog would never open at all. `press`
 	 * snapshots just before `start()`/`restart()`, and the death path compares
 	 * the final score against the snapshot. The live bumping is correct for the
-	 * HUD and is deliberately untouched.
+	 * status line and is deliberately untouched.
 	 */
 	const runBestRef = useRef(0);
 
@@ -209,12 +210,31 @@ export default function RunnerGame({
 
 		const heroHost =
 			(band.closest("[data-hero]") as HTMLElement | null) ?? band;
+		// The hero's single status line, server-rendered in Invite.astro and found
+		// by attribute (the same idiom as `[data-leaderboard-open]`). The idle
+		// prompt already ships in the HTML; every later value is written straight
+		// to `textContent` from the rAF loop, with `lastStatus` skipping writes when
+		// the formatted score has not changed. No React state, so play never
+		// re-renders the island, and no `aria-live` — a constantly updating score
+		// would chatter at a screen reader.
+		const statusEl = heroHost.querySelector<HTMLElement>(
+			"[data-runner-status]",
+		);
+		let lastStatus = statusEl?.textContent ?? "";
+		const writeStatus = (text: string): void => {
+			if (!statusEl || text === lastStatus) return;
+			statusEl.textContent = text;
+			lastStatus = text;
+		};
+		const runningStatus = (): string => {
+			const s = view(game);
+			return `HI ${formatScore(s.highScore)}   ${formatScore(s.score)}`;
+		};
 		// The hero carries a single `data-phase` attribute ("idle" | "running" |
-		// "dead") rather than a boolean, so CSS can tell "mid-session but not
-		// running" (dead) from "not started" (idle). Two consumers: the sky strips
-		// are promoted to compositor layers only while `running` (see
-		// `.hero-sky-strip` in Invite.astro), and the play prompt is hidden while
-		// `running` or `dead`.
+		// "dead"). Its only CSS consumer is `.hero-sky-strip` in Invite.astro, which
+		// promotes the strips to compositor layers while `running`. The other values
+		// have no rule of their own but are kept so the attribute states the real
+		// phase rather than degrading into a `running` boolean.
 		const setPhaseAttr = (next: Phase): void => {
 			heroHost.dataset.phase = next;
 		};
@@ -326,21 +346,6 @@ export default function RunnerGame({
 				s.player.w * px,
 				s.player.h * px,
 			);
-
-			// Arcade HUD on the canvas, so play never re-renders React. Left-aligned,
-			// and not drawn at all while idle: there must be no score before the
-			// first play. It stays visible through `dead` so the final score is
-			// readable. Phase comes from `view(game)`, the renderer's only read path.
-			if (s.phase !== "idle") {
-				ctx.fillStyle = textColor;
-				ctx.font = "12px ui-monospace, monospace";
-				ctx.textAlign = "left";
-				ctx.fillText(
-					`HI ${formatScore(s.highScore)}   ${formatScore(s.score)}`,
-					6,
-					15,
-				);
-			}
 		};
 
 		const frame = (time: number): void => {
@@ -363,6 +368,7 @@ export default function RunnerGame({
 			const state = view(game);
 			if (state.phase === "running") {
 				advanceParallax(state.groundOffset, state.pixelScale);
+				writeStatus(runningStatus());
 			} else {
 				// Hold the offset when the run ends. Syncing the baseline means a
 				// restart (which zeroes groundOffset) cannot produce a jump.
@@ -382,11 +388,10 @@ export default function RunnerGame({
 			accumulator = 0;
 			if (view(game).phase === "dead") {
 				persistHighScore(view(game).highScore);
-				setPhase("dead");
-				// Set "dead", do not delete: the phase attribute must distinguish a
-				// finished run from an untouched idle hero, or the play prompt
-				// reappears alongside the band's game-over message.
+				// Write "dead", do not delete the attribute: the hero should still say
+				// which phase the session is in, and nothing reads it as a boolean.
 				setPhaseAttr("dead");
+				writeStatus(DEAD_STATUS);
 				// The trigger: this run beat the best as it stood before the run began.
 				// The first ever run always qualifies (the snapshot starts at 0), which
 				// is how a first-time player discovers the board. A score of 0 does not
@@ -426,18 +431,18 @@ export default function RunnerGame({
 				// run. At death `highScore` is already max(old best, just-finished score).
 				runBestRef.current = view(game).highScore;
 				game = restart(game);
-				setPhase("running");
 				resyncParallax();
 				setPhaseAttr("running");
+				writeStatus(runningStatus());
 				startLoop();
 				return;
 			}
 			if (current === "idle") {
 				runBestRef.current = view(game).highScore;
 				game = start(game);
-				setPhase("running");
 			}
 			setPhaseAttr("running");
+			writeStatus(runningStatus());
 			pointerJump = true;
 			startLoop();
 		};
@@ -606,11 +611,6 @@ export default function RunnerGame({
 					Press space, the up arrow, or W to jump. Press space or enter to
 					restart after a crash. Tap the hero to play.
 				</p>
-				{interactive && phase === "dead" && !leaderboardOpen && (
-					<p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-body text-sm text-stone-500">
-						Game over — press space to retry
-					</p>
-				)}
 			</div>
 			{/*
 			 * The dialog is a sibling of the band, never a child. Below ~640px viewport

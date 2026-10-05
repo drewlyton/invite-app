@@ -1,9 +1,9 @@
 /**
- * Display formatting for scores, shared by the canvas HUD (`RunnerGame.tsx`)
- * and the DOM leaderboard (`Leaderboard.tsx`).
+ * Display formatting for scores, shared by the hero's runner status line
+ * (`RunnerGame.tsx`) and the DOM leaderboard (`Leaderboard.tsx`).
  *
- * Both columns must be the same width or the DOM board and the canvas read as
- * two different systems. A literal `5` on each side is exactly the duplicated
+ * Both columns must be the same width or the DOM board and the status line read
+ * as two different systems. A literal `5` on each side is exactly the duplicated
  * constant this project has already been bitten by (`MIN_WORLD_WIDTH`, a
  * hand-copied `SPEC_AIR_TIME`, the tuning table); the width lives here once.
  */

@@ -73,7 +73,7 @@ false when you don't (the old best is higher) — **the dialog would never appea
 
 So the component must snapshot the best when a run **starts** (a ref set in the same
 place `start()` / `restart()` is called) and compare the final score against that
-snapshot. The live bumping is correct for the HUD — `HI` ticking up mid-run the moment you
+snapshot. The live bumping is correct for the status line — `HI` ticking up mid-run the moment you
 pass your record is proper arcade behaviour — so do **not** change the simulation.
 
 Consequences worth knowing:
@@ -318,25 +318,27 @@ most.
   again.*
 - Guard against double submission: disable the button while a request is in flight.
 
-### The band's game-over line
+### The game-over message
 
-Suppress `Game over — press space to retry` while the dialog is open. Otherwise the band
-and the dialog announce the same moment simultaneously, which is the exact
-double-message wart already fixed once for the play prompt. The band keeps the line for
-ordinary, non-record deaths — which is most of them, and is what preserves the fast
-`die → space → retry` loop.
+`Game over — press space to retry` is now part of the hero's single status line
+(`[data-runner-status]`, owned by [`hero-runner-game.md`](./hero-runner-game.md)), not
+a separate line in the game band. The band's duplicate line and its `leaderboardOpen`
+suppression are both gone: the island writes the message imperatively when the run
+ends, and the centred modal dialog and its backdrop cover it while the dialog is
+open. It still serves ordinary, non-record deaths — which is most of them, and is
+what preserves the fast `die → space → retry` loop.
 
 ## Styling
 
-Arcade high-score table, matching the in-game HUD so the DOM board and the canvas read as
-one system:
+Arcade high-score table, matching the hero's status line so the DOM board and the
+game text read as one system:
 
 - Rank, handle, score. `Press Start 2P`, uppercase.
 - Scores **zero-padded and right-aligned** through `formatScore` in
-  `src/lib/score-format.ts`, which owns the single `SCORE_DIGITS` constant shared with the
-  canvas HUD. The width is deliberately **not** written down here — this project has been
+  `src/lib/score-format.ts`, which owns the single `SCORE_DIGITS` constant shared with
+  the status line. The width is deliberately **not** written down here — this project has been
   bitten repeatedly by duplicated constants, and two columns that disagree would make the
-  DOM board and the canvas read as different systems.
+  DOM board and the status line read as different systems.
 - The just-submitted row gets a `NEW` badge; the visitor's own rows are highlighted.
 - Empty state ("No scores yet — be the first"), loading state, error-with-retry state.
 - Must stay readable and scrollable at 390px wide. `Press Start 2P` glyphs are roughly
@@ -415,8 +417,8 @@ Acceptance:
   the board region errors. The game and the invite keep working.
 - Focus returns to the band after a game-over dialog, and to the button after a
   button-opened one; `Space` closes, `Enter` submits, `Escape` closes.
-- The band's game-over line is hidden while the dialog is open, and `data-phase` is
-  correct again once it closes.
+- The hero's status line shows `Game over — press space to retry` when the run ends,
+  and `data-phase` is correct again once the dialog closes.
 
 ### Stage 4 — edge cases, regression pass, docs
 
@@ -435,8 +437,8 @@ Acceptance:
 - The RSVP path is untouched: typing in the form never moves the player, and the
   "RSVP by…" link navigates without starting the game.
 - The invite renders and the game plays with JavaScript's `fetch` failing.
-- `docs/hero-runner-game.md` updated where the game-over behaviour changed (the band's
-  line is now conditional; the dialog exists), and this document's status updated.
+- `docs/hero-runner-game.md` updated where the game-over behaviour changed (the dialog
+  exists), and this document's status updated.
 
 ## Invariants that must not regress
 

@@ -400,12 +400,13 @@ than hard.
 - Sprites blitted as batched rects: one `beginPath()`, a `rect()` per filled
   pixel, one `fill()`. Cheaper than N `fillRect()` calls and keeps the pixel grid
   crisp.
-- **Score is drawn on the canvas**, arcade style (`HI 00000  00012`), **top-left**,
-  and **not drawn at all during `idle`** — there is no score until the player has
-  started a game, and it stays up through `running` and `dead` so the final score is
-  readable. Gating on the phase from `view(game)` keeps it out of React state.
-  This matters: it means zero React re-renders during play. React state is only
-  used for phase transitions that change DOM (hint text, game-over overlay).
+- **The score lives in the hero's status line, not on the canvas.** The island
+  finds `[data-runner-status]` once and rewrites its `textContent` from the rAF
+  loop, and only when the formatted string changes. The old canvas HUD block is
+  gone, so the score is drawn exactly once and inherits the hero's type instead of
+  a fixed 12px canvas font. Keeping it out of React state is what preserves zero
+  React re-renders during play; React state now covers only the leaderboard dialog
+  and the reduced-motion `interactive` flag.
 - High score persists in `localStorage` under `runner:hi:<eventId>`, wrapped in
   `try/catch` (private browsing throws). A number only — no user data.
 - Optional inverted-palette phase at score milestones is **off by default**: it
@@ -532,36 +533,42 @@ This is opt-in per theme because it changes what a visitor sees before scrolling
 and it applies to `game-night-light` only. `default`, `game-night`, and `birthday`
 render the details inside the hero exactly as before.
 
-### The play prompt
+### The status line
 
-A visible prompt sits **below the subtitle**: `Click / Space / Tap to Play`. It
-lives in the hero content rather than the canvas band, because that is where the
-eye already is, and the band's own space is needed for the game.
+A single status line sits **below the subtitle**, in the slot the play prompt
+used to occupy. It is one element, `[data-runner-status]`, server-rendered with
+the idle prompt and rewritten in sequence by the island:
 
-It is hidden by pure CSS off a **phase** attribute on the hero,
-`data-phase = "idle" | "running" | "dead"`, which the island writes — so starting a
-run does not re-render the island. It is also hidden under `prefers-reduced-motion`,
-where play is never offered.
+| Phase | Text |
+| --- | --- |
+| idle | `Click / Space / Tap to Play` |
+| running | `HI 00000  00012` (live high score and score) |
+| dead | `Game over — press space to retry` |
 
-The band keeps its own **contextual** game-over line (`Game over — press space to
-retry`), which belongs near the action, so the prompt is hidden for **both**
-`running` and `dead` and the same moment never shows two messages. That line is in
-turn suppressed while the leaderboard dialog is open, so the dialog and the band do
-not announce the same moment twice — see below.
+It lives in the hero content rather than the canvas band, because that is where
+the eye already is, and the band's own space is needed for the game. It is hidden
+under `prefers-reduced-motion`, where play is never offered.
 
-Two details here are load-bearing, and both were learned the hard way:
+Four details here are load-bearing, and the first two were learned the hard way:
 
-- **The rule names the hidden values explicitly** —
-  `[data-phase="running"] .play-prompt, [data-phase="dead"] .play-prompt`. Do **not**
-  rewrite it as `:not([data-phase="idle"])`: before hydration there is no attribute
-  at all, so that selector matches on first paint and flashes the prompt away for
-  every visitor, including those who never play. Absent must behave like `idle`, so
-  the prompt ships visible in the HTML and stays visible without JS.
-- **Death writes `"dead"`, it does not delete the attribute.** The first version used
-  a boolean that was set only while running and deleted otherwise, which meant it
-  could not distinguish "mid-session, just crashed" from "never started" — so the
-  prompt reappeared on the game-over screen. A boolean cannot express this; the
-  attribute has to carry the phase.
+- **The idle prompt ships in the HTML.** The island tags the element with a data
+  attribute and rewrites `textContent` only when the value changes, so the prompt
+  is visible before hydration and with JS disabled, and the live score never
+  touches React state.
+- **The slot reserves a constant height.** The line sits in a grid cell beside an
+  invisible spacer holding the tallest message, so the idle prompt wrapping on a
+  narrow phone cannot resize the slot and switching states cannot shift the hero.
+  Switching does **not** use `display: none`, which is exactly the shift the old
+  CSS rule caused.
+- **The island still writes `data-phase`** (`"idle" | "running" | "dead"`) on the
+  hero, but its only CSS consumer now is the sky-strip `will-change` promotion; the
+  old `[data-phase="running"] .play-prompt` hide rule is deleted. The three values
+  are kept rather than collapsed to a boolean so the attribute still states the
+  real phase, and `dead` is still written rather than deleted.
+- **No `aria-live`.** The score changes every frame, so announcing it would be
+  unusable. The offscreen instructions and `aria-describedby` on the band are
+  unchanged, and the invisible spacer is `aria-hidden` so it is read once, not
+  twice.
 
 ### The leaderboard dialog and the `HIGH SCORES` button
 
@@ -574,17 +581,17 @@ touch the hero and are recorded here because they change the game-over behaviour
   motion and when the band is hidden by a short viewport, because viewing the
   standings is not play.
 - On a new personal best the island opens a native `<dialog>` modal over the hero.
-  While it is open the band's `Game over — press space to retry` line is **hidden**,
-  so the dialog and the band never announce the same moment; the line returns as soon
-  as the dialog closes. The dialog is a **sibling** of the band, never a child: below
-  ~640px viewport height the band is `display: none`, and a modal inside a hidden
-  subtree does not render even from the top layer.
+  The game-over message now lives in the status line, which the centred dialog and
+  its backdrop cover while it is open; the band's duplicate line and its
+  `leaderboardOpen` suppression are both gone. The dialog is a **sibling** of the
+  band, never a child: below ~640px viewport height the band is `display: none`,
+  and a modal inside a hidden subtree does not render even from the top layer.
 
 ### Two consequences of the layout split
 
 - **The hero loses its scroll cue.** The "RSVP by …" link with its bouncing
   chevrons was the only thing signalling that more content existed below. In the
-  `detailsBelowFold` layout nothing in the hero says so, beyond the play prompt. It
+  `detailsBelowFold` layout nothing in the hero says so, beyond the status line. It
   is a deliberate trade, not an oversight.
 - The title/subtitle spacing overrides that exist for the pixel themes were sized
   for a stacked block that has since moved out, so that gap needed re-checking by
@@ -727,7 +734,7 @@ path. But its cost turned out to be a *visible pop-in*: `client:idle` hydrates o
 paint — and because the band has **no server-rendered appearance whatsoever** (no
 background utility, and a `<canvas>` is always empty in HTML), the hero rendered
 with an empty strip where the ground and player should be. The invite text, stars,
-clouds, and the play prompt are all server-rendered and painted immediately, so the
+clouds, and the status line are all server-rendered and painted immediately, so the
 game visibly arrived late and the prompt sat over an empty band in the meantime.
 
 `client:load` hydrates as soon as the module loads, so the ground is drawn with the
@@ -749,7 +756,7 @@ event, which is acceptable because `game-night-light` is this event's theme.
 - The invite's information is fully present in the DOM text. The game is never
   the only route to anything.
 - **`prefers-reduced-motion: reduce`**: render the idle scene and do not offer
-  play at all — no rAF, no hint text, no extra tab stop. This falls out for free
+  play at all — no rAF, no status line, no extra tab stop. This falls out for free
   because idle is already a static single draw.
 - Contrast: `#1c1917` body text must keep its ratio over the sprite colour.
   Verify the muted grey against white before picking it.
@@ -960,23 +967,24 @@ hero):
       returns to the band and Space jumps rather than scrolling.
 - [ ] Tapping the "RSVP by…" hero link navigates and does not start the game.
 - [ ] On a phone, scrolling through the hero does not trigger a jump.
-- [ ] With reduced motion emulated, the hero is a static pixel scene with no play
-      prompt, no autofocus, no tab stop, and no way to start the game.
+- [ ] With reduced motion emulated, the hero is a static pixel scene with no
+      status line, no autofocus, no tab stop, and no way to start the game.
 - [ ] Scrolling to the RSVP form stops the rAF loop.
 - [ ] No obstacle is ever unclearable at max speed.
 - [ ] Hero text stays readable over the sprites.
-- [ ] The play prompt sits under the subtitle and is legible; it is visible at idle,
-      hidden while running, and **hidden again on the game-over screen** so it never
-      stacks with the band's message. It must also be visible before hydration (no
-      flash on load).
+- [ ] The status line sits under the subtitle and is legible; it shows the idle
+      prompt at rest, the live score while running, and the game-over message on
+      death. It must be visible before hydration (no flash on load), and the slot
+      must keep a constant height as it changes, including when the idle prompt
+      wraps on a narrow phone.
 - [ ] The `HIGH SCORES` button opens the board without starting the game, including
       under reduced motion and on a short viewport where the band is hidden.
-- [ ] While the game-over dialog is open the band's "Game over — press space to
-      retry" line is hidden, and it comes back when the dialog closes.
+- [ ] While the game-over dialog is open the modal covers the status line's
+      game-over message, and the message is still there when the dialog closes.
 - [ ] After a game-over dialog closes, focus is on the band and `Space` retries; after
       a `HIGH SCORES` open, focus is back on the button.
-- [ ] No score is drawn before the first play; it appears at the top-left after
-      starting and remains through the game-over state.
+- [ ] No score is shown before the first play; it appears in the status line when
+      a run starts and remains through the game-over state.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
       still distinguishable against it.
 - [ ] The raised ground does not make the playfield feel cramped above the line.

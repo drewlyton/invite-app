@@ -1,5 +1,6 @@
 ---
 import type { CollectionEntry } from "astro:content";
+import { DEAD_STATUS, IDLE_STATUS } from "../lib/runner-status";
 import type { Theme } from "../lib/themes";
 import EventDetails from "./EventDetails.astro";
 import RunnerGame from "./RunnerGame";
@@ -193,15 +194,17 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	</h2>
 )}
 
-		{/* The idle play prompt lives in the hero content, not the band, so the
-		   same message is not shown twice. The phase-specific game-over message
-		   stays in the band, near the action it describes. `motion-reduce:hidden`
-		   because play is not offered under reduced motion, and the scoped
-		   `[data-phase]` rule below hides it while a run is in flight or dead. */}
+		{/* One status line for all three phases, in the play prompt's old slot. The
+		   island rewrites this single element with `textContent`, so play never
+		   re-renders React. The invisible span is a spacer holding the tallest
+		   message: without it the slot would resize when the state changes, and on
+		   a narrow phone the idle prompt could wrap without the slot accounting
+		   for it. `motion-reduce:hidden` because play is not offered there. */}
 		{theme.runner && (
-		<p class="play-prompt mt-4 font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
-			Click / Space / Tap to Play
-		</p>
+		<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
+			<span aria-hidden="true" class="invisible col-start-1 row-start-1">{DEAD_STATUS}</span>
+			<p data-runner-status class="col-start-1 row-start-1">{IDLE_STATUS}</p>
+		</div>
 )}
 
 		{!theme.detailsBelowFold && (
@@ -429,19 +432,6 @@ const CLOUD_PARALLAX_RATE = "0.30";
    only phase that should promote. */
 [data-phase="running"] .hero-sky-strip {
 	will-change: transform;
-}
-/* The hero gets `data-phase` from the island. Hide the idle play prompt while
-   `running` and while `dead`, purely in CSS — no React state, so starting a run
-   does not re-render the island. The rule names the two hidden values
-   explicitly rather than using `:not([data-phase="idle"])`: before hydration
-   there is no attribute at all, and a `:not` selector would match on first
-   paint and flash the prompt away until the island mounts. Absent behaves like
-   `idle`, so the prompt ships visible and stays visible until a run starts.
-   `dead` is included because the band owns that moment with its own game-over
-   message; showing both would stack two messages on the same state. */
-[data-phase="running"] .play-prompt,
-[data-phase="dead"] .play-prompt {
-	display: none;
 }
 .hero-sky-section {
 	flex: 1 0 33.3333%;
