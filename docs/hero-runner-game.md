@@ -15,13 +15,13 @@ leaderboard that hangs off its game-over flow is a separate feature, owned by
 
 | Question | Decision |
 | --- | --- |
-| Idle behaviour | Static scene. A player block sits at the left edge of the canvas and nothing moves until input. |
+| Idle behaviour | The player sprite bobs in place at the left edge of the canvas; nothing else moves until input, and the rAF loop runs only to drive that bob. |
 | Start trigger | Tapping the hero **or** pressing space while the game region is focused. |
 | Input safety | Must never interfere with the invitee's ability to read the invite or fill out the RSVP form. |
 | Mobile | Same as desktop: tap the hero. No separate touch controls. |
 | Controls | **Jump only** — one button. Space / tap jumps; Space / Enter restarts when dead. No duck, no second action. |
 | Clouds | Game replaces the bottom (large, fast) cloud layer. The top distant-cloud strip stays. |
-| Sprite art | Hand-authored pixel bitmaps defined in code, recolourable from the theme. |
+| Sprite art | Hand-authored pixel bitmaps defined in code with their own palette; the theme colour still drives the ground and obstacles. |
 | Milestone (optional) | Score 30 → confetti + "Happy 30th!", reusing `canvas-confetti`. |
 | Playfield width | **Dynamic**: `worldWidth = canvasWidth / pixelScale`. Difficulty is constant in world units; warning time varies with viewport and is guarded by a minimum playfield width. |
 | Prototype boundary | Steps 1–2 only (`runner.ts` + a throwaway debug renderer), to settle the tuning numbers. |
@@ -61,7 +61,7 @@ type Game = {
   // distance, spawn timer, seeded rng
 };
 
-type Pose = "idle" | "run" | "dead";                    // no duck pose
+type Pose = "idle" | "push" | "ride" | "jump" | "dead"; // no duck pose
 
 type ObstacleKind =
   | "ground-narrow" | "ground-wide" | "ground-cluster"
@@ -115,8 +115,10 @@ renderer must consume it within the frame and not retain it.
 
 Anchoring is resolved inside `view()`: `player.y` is already the top-left of the
 current pose's box with the feet planted on `GROUND_Y`, so the renderer never
-converts between anchors. It only ever does
-`ctx.fillRect(s.x * px, s.y * px, s.w * px, s.h * px)`.
+converts between anchors. It calls
+`drawBitmap(ctx, PLAYER_SPRITES[pos][frame % n], PLAYER_PALETTE, s.player.x, s.player.y, px)`
+for the player and `ctx.fillRect(s.x * px, s.y * px, s.w * px, s.h * px)` for each
+obstacle.
 
 **Determinism.** All randomness comes from `seed`. `runner.ts` must never call
 `Math.random()` or `Date.now()`; the component derives the default seed and
@@ -401,6 +403,12 @@ than hard.
 - Sprites blitted as batched rects: one `beginPath()`, a `rect()` per filled
   pixel, one `fill()`. Cheaper than N `fillRect()` calls and keeps the pixel grid
   crisp.
+- **The player is a multi-colour sprite blitted by colour.** `drawBitmap` groups
+  the bitmap's cells by palette colour and emits one `beginPath()` /
+  `rect()`-per-pixel / `fill()` per distinct colour, skipping transparent cells.
+  It takes `s.player.x`, `s.player.y` and `pixelScale` unchanged, so the sprite
+  maps 1:1 onto the 16×22 player box with no anchoring maths in the renderer.
+  Obstacles are still one `fillRect` each.
 - **The score lives in the hero's status line, not on the canvas.** The island
   finds `[data-runner-status]` once and rewrites its `textContent` from the rAF
   loop, and only when the formatted string changes. The old canvas HUD block is
@@ -443,36 +451,48 @@ than hard.
 
 ## Sprites
 
-Bitmaps are arrays of strings in `runner-sprites.ts`, `#` = fill, anything else =
-transparent:
+Bitmaps are arrays of equal-length strings in `runner-sprites.ts`. Each character
+is a key in `PLAYER_PALETTE`; `.` is transparent, and so is any character that is
+not a palette key. A player bitmap is exactly **16 columns × 22 rows** — the
+simulation's player box — so it blits 1:1 with no anchoring change. The module
+asserts that shape at import, and `scripts/verify-sprites.ts` re-checks it.
 
 ```ts
-export const PLAYER_RUN_1 = [
-  "....#####.......",
-  "....#....#......",
-  ...
-];
+export type Bitmap = readonly string[];
+export const PLAYER_SPRITE_WIDTH = 16;
+export const PLAYER_SPRITE_HEIGHT = 22;
+export const PLAYER_PALETTE: Readonly<Record<string, string>>;      // key -> CSS colour
+export const PLAYER_SPRITES: Readonly<Record<Pose, readonly Bitmap[]>>;
+export function drawBitmap(ctx, bitmap, palette, x, y, px): void;   // batched blit
 ```
 
-Recolour by drawing with `fillStyle = theme.runner.color` — one bitmap serves
-every theme. Required frames:
+The palette is **semantic and multi-colour** (outline/eyes, hair and beard, skin,
+freckle, glasses frame, glasses lens, clothing, pants, shoe, board deck, wheel,
+wheel highlight), not the single theme tint the original sketch assumed. The
+character is a guy with black curly hair, a short black beard, a lightly
+freckled face and square black glasses; the blue shirt is deliberately distinct
+from the muted grey obstacle colour so the player reads on the white hero. The
+colours are fixed in the sprite module — only the ground and obstacles take
+`theme.runner.color` — which is recorded under **Known divergences**.
 
-| Sprite | Frames |
-| --- | --- |
-| Player idle | 1 |
-| Player run | 2 |
-| Player dead | 1 |
-| Ground obstacle small / large / cluster | 1 each (cluster = repeats) |
-| Flying obstacle | 2 (wing up / wing down) |
-| Ground dashes | 1 (tiled) |
+Implemented frames (step 4 — no longer placeholders):
 
-**Prototype with placeholder rects.** Ship the first working version with a plain
-square for the player and rectangles for obstacles so the jump feel and spawn
-fairness can be tuned before any art exists. Keep the blit interface stable so
-swapping in real bitmaps is a no-op for callers.
+| Pose | Frames | Used for |
+| --- | --- | --- |
+| `idle` | 2 | neutral bob in place; board held vertically at the right leg |
+| `push` | 2 | brief intro when a run starts, before `ride` |
+| `ride` | 2 (wheels spin) | the default grounded pose during play |
+| `jump` | 1 | airborne, board kicked up under the feet |
+| `dead` | 1 | crashed; board upright beside the seated player |
 
-Do not copy the original game's sprite assets. Hand-authored bitmaps keep the art
-original, themeable per event, and reviewable in a diff.
+Obstacle art (the ground/flying kinds) is still unbuilt and drawn as rectangles;
+the ground texture and dashes are the shared `GROUND_TEXTURE` list.
+
+`drawBitmap` groups the bitmap's cells by colour and emits **one batched path per
+colour** (`beginPath()` / `rect()` per cell / `fill()`), so the whole character
+costs a handful of rasterisations rather than one per pixel. Do not copy the
+original game's sprite assets; hand-authored bitmaps keep the art original and
+reviewable in a diff.
 
 ## Interaction and input
 
@@ -524,6 +544,16 @@ island via `closest("[data-hero]")`), with these guards:
 3. No `touch-action: none` on the hero — that would trap scrolling. We add
    nothing, or `touch-action: manipulation` at most.
 4. `preventDefault()` only while a game is actually in the `running` phase.
+
+### Starting a run does not jump
+
+The start/restart press and the jump press are distinct. Starting from `idle`,
+restarting from `dead`, and tapping while `running` all route through `press()`,
+but only a press that lands while the phase is already `running` queues a jump
+(`pointerJump`). Starting and restarting therefore play the `push` intro and
+settle into `ride` with no jump, and the first jump is a separate input. This is
+what stops the idle → run transition from interrupting the intro with an
+unintended hop.
 
 ### Autoplay is off
 
@@ -877,8 +907,15 @@ event, which is acceptable because `game-night-light` is this event's theme.
 
 ## Performance and lifecycle
 
-- Idle = **one draw call**, no rAF. The loop starts on `start()` and stops on
-  death.
+- **Idle runs a loop, for the bob.** The player's idle pose is a two-frame
+  animation, so the rAF loop starts on mount (the interactive case) and runs
+  while `phase !== "dead"`; death stops it. This is deliberate, not a
+  regression: the bob is the point of the idle scene. The loop is still gated by
+  `prefers-reduced-motion` (no loop at all — one static idle frame drawn once),
+  `document.hidden`, and the hero's `IntersectionObserver`, so it costs nothing
+  while the visitor fills in the RSVP form or the hero is off screen. Parallax
+  still advances only while `running`; idle frames redraw the same scene with the
+  next bob frame.
 - Pause on `document.visibilitychange` and when the hero leaves the viewport
   (`IntersectionObserver`, threshold 0). A rAF loop running while someone fills
   out the RSVP form is pure waste.
@@ -895,7 +932,10 @@ event, which is acceptable because `game-night-light` is this event's theme.
    loop, pause handling.
 3. Wire `theme.runner`, `Invite.astro`, and the `data-hero` attribute; delete the
    bottom cloud layer and its dead CSS.
-4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`.
+4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`. **Done** — the
+   five player poses and the palette are in `runner-sprites.ts`, selected by the
+   pose union in `runner.ts` and blitted by `drawBitmap` in `RunnerGame.tsx`.
+   Obstacle art remains placeholder rectangles.
 5. Focusable region, offscreen instructions, reduced-motion branch, contrast pass.
 6. Optional: score-30 confetti milestone.
 7. `npm run lint` and a `astro build`.
@@ -935,7 +975,6 @@ than hidden:
   `css.parser.tailwindDirectives`. The repo-wide Biome pass also reformatted
   unrelated files, including `cloud-small.svg` (26 rects before and after — pure
   whitespace churn).
-- Sprites are still placeholder rectangles; step 4 is unbuilt.
 - `SKY_COPIES = 3`, shared by all layers. Only the cloud layer strictly needs 3
   (its ambient and player-driven shifts add and can reach two sections); stars
   carry the player offset only and would be safe with 2. Keep 3 — see
@@ -967,6 +1006,12 @@ mirrors. The spawner must recompute airtime from the *active* tuning rather than
 the module default, or per-run overrides would silently break the gap guarantee.
 - Duck is gone as of tuning round 1; the implementation follows the jump-only
 input model specified above.
+- **The player sprite uses a fixed palette** in `runner-sprites.ts` rather than
+`theme.runner.color`. The original sketch assumed one recolourable bitmap per
+theme, but a multi-colour character (black hair, skin, glasses, blue shirt)
+cannot come from a single tint. The theme colour still drives the ground and the
+obstacle rectangles.
+- Obstacle art is still placeholder rectangles; only the player is hand-authored.
 
 ## Verification
 
