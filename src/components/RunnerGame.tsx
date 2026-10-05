@@ -53,7 +53,26 @@ export default function RunnerGame({
 
 	const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 	const [board, setBoard] = useState<BoardState>({ status: "loading" });
+	const [pendingScore, setPendingScore] = useState<number | null>(null);
 	const openButtonRef = useRef<HTMLButtonElement | null>(null);
+	/**
+	 * How the dialog was opened, so closing can return focus where the keyboard
+	 * user left off: the trigger on a button open, the band on a game-over open
+	 * (where `Space` means retry).
+	 */
+	const openSourceRef = useRef<"band" | "button">("button");
+	/**
+	 * The personal best **as it was when the current run started**.
+	 *
+	 * This cannot be read from `view(game).highScore` at death: `step` bumps the
+	 * high score *during play*, so by then it already equals the new score. A
+	 * `final > highScore` check is false both when a record is set (equal) and
+	 * when it is not (lower), and the dialog would never open at all. `press`
+	 * snapshots just before `start()`/`restart()`, and the death path compares
+	 * the final score against the snapshot. The live bumping is correct for the
+	 * HUD and is deliberately untouched.
+	 */
+	const runBestRef = useRef(0);
 
 	// Prefetch the board once on mount and hold it in memory, so opening the
 	// dialog shows no loading flash. A skeleton is for a genuine cold fetch only.
@@ -87,7 +106,10 @@ export default function RunnerGame({
 		);
 		if (!button) return;
 		openButtonRef.current = button;
-		const onClick = (): void => setLeaderboardOpen(true);
+		const onClick = (): void => {
+			openSourceRef.current = "button";
+			setLeaderboardOpen(true);
+		};
 		button.addEventListener("click", onClick);
 		return () => {
 			button.removeEventListener("click", onClick);
@@ -95,12 +117,18 @@ export default function RunnerGame({
 		};
 	}, []);
 
-	// Escape and the close button both land here. Focus returns to the button
-	// deliberately: it is the trigger the keyboard user left off at, and the band
-	// is focused on load by its own effect, not this one.
+	// Escape and the close button both land here. Focus routes by how the dialog
+	// was opened: the band after a game-over open, so `Space` still means retry,
+	// and the trigger button after a button open. Dismissing also forfeits the
+	// pending score — it is cleared here and never re-offered.
 	const closeLeaderboard = useCallback((): void => {
 		setLeaderboardOpen(false);
-		openButtonRef.current?.focus({ preventScroll: true });
+		setPendingScore(null);
+		const target =
+			openSourceRef.current === "band"
+				? bandRef.current
+				: openButtonRef.current;
+		target?.focus({ preventScroll: true });
 	}, []);
 
 	useEffect(() => {
@@ -359,6 +387,16 @@ export default function RunnerGame({
 				// finished run from an untouched idle hero, or the play prompt
 				// reappears alongside the band's game-over message.
 				setPhaseAttr("dead");
+				// The trigger: this run beat the best as it stood before the run began.
+				// The first ever run always qualifies (the snapshot starts at 0), which
+				// is how a first-time player discovers the board. A score of 0 does not
+				// qualify, though `floor(distance / scoreUnit)` makes it unreachable.
+				const finalScore = view(game).score;
+				if (finalScore > runBestRef.current && finalScore > 0) {
+					openSourceRef.current = "band";
+					setPendingScore(finalScore);
+					setLeaderboardOpen(true);
+				}
 			}
 		};
 
@@ -384,6 +422,9 @@ export default function RunnerGame({
 		const press = (): void => {
 			const current = view(game).phase;
 			if (current === "dead") {
+				// Snapshot the best the new run must beat, before `restart` resets the
+				// run. At death `highScore` is already max(old best, just-finished score).
+				runBestRef.current = view(game).highScore;
 				game = restart(game);
 				setPhase("running");
 				resyncParallax();
@@ -392,6 +433,7 @@ export default function RunnerGame({
 				return;
 			}
 			if (current === "idle") {
+				runBestRef.current = view(game).highScore;
 				game = start(game);
 				setPhase("running");
 			}
@@ -564,7 +606,7 @@ export default function RunnerGame({
 					Press space, the up arrow, or W to jump. Press space or enter to
 					restart after a crash. Tap the hero to play.
 				</p>
-				{interactive && phase === "dead" && (
+				{interactive && phase === "dead" && !leaderboardOpen && (
 					<p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-body text-sm text-stone-500">
 						Game over — press space to retry
 					</p>
@@ -579,8 +621,13 @@ export default function RunnerGame({
 			<Leaderboard
 				open={leaderboardOpen}
 				onClose={closeLeaderboard}
+				eventId={eventId}
 				state={board}
 				onRetry={loadBoard}
+				onSubmitted={(_entry, nextBoard) =>
+					setBoard({ status: "ready", board: nextBoard })
+				}
+				pendingScore={pendingScore ?? undefined}
 			/>
 		</>
 	);
