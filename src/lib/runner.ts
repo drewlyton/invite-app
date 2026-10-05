@@ -13,7 +13,7 @@
 
 export type Input = { jump: boolean };
 
-export type Pose = "idle" | "run" | "dead";
+export type Pose = "idle" | "push" | "ride" | "jump" | "dead";
 
 export type ObstacleKind =
 	| "ground-narrow"
@@ -121,6 +121,10 @@ export const TUNING = {
 
 	// Animation.
 	frameDuration: 0.1,
+	// Length of the push intro at the start of a run, before the player settles
+	// into the ride pose. Presentation only: it never touches physics, so it can
+	// be retuned without affecting fairness.
+	pushDuration: 0.7,
 } as const;
 
 /** Full tuning shape, with plain `number` values so debug knobs can override. */
@@ -197,6 +201,8 @@ type PlayerState = {
 	pose: Pose;
 	frame: number;
 	frameTime: number;
+	/** Seconds into the current run. Drives the push -> ride transition. */
+	runTime: number;
 	/** Previous frame's jump input, so a held key is one jump, not bunny-hopping. */
 	jumpHeld: boolean;
 };
@@ -356,6 +362,7 @@ function makePlayer(groundY: number, playerX: number, pose: Pose): PlayerState {
 		pose,
 		frame: 0,
 		frameTime: 0,
+		runTime: 0,
 		jumpHeld: false,
 	};
 }
@@ -461,7 +468,9 @@ function beginRun(g: GameState): GameState {
 		phase: "running",
 		score: 0,
 		rng: first.rng,
-		player: makePlayer(g.groundY, g.playerX, "run"),
+		// A run opens with the push intro, not a ride: `stepPlayer` selects
+		// "ride" once `runTime` passes `TUNING.pushDuration`.
+		player: makePlayer(g.groundY, g.playerX, "push"),
 		obstacles: [],
 		distance: 0,
 		nextSpawnDistance: 0,
@@ -563,19 +572,25 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		y = g.groundY - TUNING.playerHeight;
 	}
 
+	// Only a run advances the run clock; a dead player's clock stops with it.
+	const runTime = running ? p.runTime + dt : p.runTime;
+
 	let pose: Pose;
 	if (g.phase === "dead") {
 		pose = "dead";
-	} else if (airborne) {
-		pose = "run";
-	} else if (running) {
-		pose = "run";
-	} else {
+	} else if (!running) {
 		pose = "idle";
+	} else if (airborne) {
+		pose = "jump";
+	} else if (runTime < g.tuning.pushDuration) {
+		pose = "push";
+	} else {
+		pose = "ride";
 	}
 
+	// push/ride/idle cycle two frames; jump and dead hold their single frame.
 	const animated =
-		pose === "run"
+		pose === "idle" || pose === "push" || pose === "ride"
 			? advanceFrame(p.frame, p.frameTime, dt)
 			: { frame: 0, frameTime: 0 };
 
@@ -587,6 +602,7 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		pose,
 		frame: animated.frame,
 		frameTime: animated.frameTime,
+		runTime,
 		jumpHeld: input.jump,
 	};
 }
@@ -604,7 +620,24 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 export function step(game: Game, dt: number, input: Input): Game {
 	const g = game as GameState;
 	const stepDt = clamp(dt, 0, TUNING.maxDt);
-	if (g.phase === "idle" || stepDt === 0) return { ...g };
+	if (stepDt === 0) return { ...g };
+	if (g.phase === "idle") {
+		// Idle is inert except for the player's own animation: the sprite bobs in
+		// place while the visitor reads the invite. No distance, no obstacles, no
+		// spawner — just the two-frame cycle, so the render loop can keep drawing
+		// the same scene. The input is deliberately ignored.
+		const animated = advanceFrame(g.player.frame, g.player.frameTime, stepDt);
+		const idleState: GameState = {
+			...g,
+			player: {
+				...g.player,
+				pose: "idle",
+				frame: animated.frame,
+				frameTime: animated.frameTime,
+			},
+		};
+		return idleState;
+	}
 
 	const speed = speedAtDistance(g.distance, g.tuning);
 	const distance = g.distance + speed * stepDt;

@@ -394,6 +394,77 @@ function resizeTest(): Assertion {
 	};
 }
 
+// --- 7. pose model -----------------------------------------------------------
+
+/**
+ * The pose union is the renderer's whole interface to the animation state, so
+ * it gets its own assertion: idle must bob in place without advancing the
+ * world, a run must open on `push` and settle into `ride` after
+ * `TUNING.pushDuration`, a grounded jump must become `jump`/airborne, and a
+ * collision must become `dead`.
+ */
+function poseTest(): Assertion {
+	const idle = createGame({ seed: 5, bandHeight: 190, canvasWidth: 640 });
+	const idleView = view(idle);
+	// `step` clamps dt to `TUNING.maxDt`, so one call cannot span a full
+	// `frameDuration`; two clamped calls do.
+	const idleStepped = step(
+		step(idle, TUNING.frameDuration, { jump: false }),
+		TUNING.frameDuration,
+		{ jump: false },
+	);
+	const idleAfterView = view(idleStepped);
+	const idleAnimates =
+		idleView.phase === "idle" &&
+		idleView.player.pose === "idle" &&
+		idleAfterView.player.pose === "idle" &&
+		idleAfterView.player.frame === 1 &&
+		idleAfterView.groundOffset === idleView.groundOffset &&
+		idleAfterView.obstacles.length === 0;
+
+	let g = start(createGame({ seed: 5, bandHeight: 190, canvasWidth: 640 }));
+	const startsPush = view(g).player.pose === "push";
+	let pushSteps = 0;
+	let pushSawFrame1 = false;
+	while (view(g).player.pose === "push" && pushSteps < 10000) {
+		g = step(g, DT, { jump: false });
+		if (view(g).player.frame === 1) pushSawFrame1 = true;
+		pushSteps++;
+	}
+	const pushSeconds = pushSteps * DT;
+	const settlesRide = view(g).player.pose === "ride";
+	const pushDurationAccurate =
+		pushSeconds >= TUNING.pushDuration &&
+		pushSeconds - TUNING.pushDuration < DT + 1e-9;
+
+	// A jump taken from the settled ride state is airborne on the next step.
+	const jumpView = view(step(g, DT, { jump: true }));
+	const jumpPose = jumpView.player.pose === "jump" && jumpView.player.airborne;
+
+	// Ride with no input until the first collision.
+	let dead = g;
+	let deadSteps = 0;
+	while (view(dead).phase !== "dead" && deadSteps < 100000) {
+		dead = step(dead, DT, { jump: false });
+		deadSteps++;
+	}
+	const deadPose = view(dead).player.pose === "dead";
+
+	const pass =
+		idleAnimates &&
+		startsPush &&
+		settlesRide &&
+		pushSawFrame1 &&
+		pushDurationAccurate &&
+		jumpPose &&
+		deadPose;
+	return {
+		name: "7. Pose model (idle bob, push -> ride, jump, dead)",
+		pass,
+		detail: `idle bobs (frame 0->1 after two maxDt-clamped steps, no distance/obstacles): ${idleAnimates}; start pose=push: ${startsPush}; push lasted ${pushSeconds.toFixed(4)}s vs pushDuration=${TUNING.pushDuration} (within one DT): ${pushDurationAccurate}, cycled to frame 1: ${pushSawFrame1}; settled to ride: ${settlesRide}; ride jump -> jump/airborne: ${jumpPose}; no-input collision -> dead: ${deadPose} after ${deadSteps} steps.`,
+	};
+}
+
 // --- 5b. resize widening keeps the pending spawn fair ----------------------
 
 /**
@@ -626,6 +697,7 @@ const warning = warningTest(maxSpeed);
 const resizeAssertion = resizeTest();
 const resizeWidening = resizeWideningTest();
 const verticalFit = verticalFitTest();
+const pose = poseTest();
 const requiredAssertions: Assertion[] = [
 	purity,
 	spacing,
@@ -634,6 +706,7 @@ const requiredAssertions: Assertion[] = [
 	resizeAssertion,
 	resizeWidening,
 	verticalFit,
+	pose,
 ];
 const caveat = geometryCaveat(maxSpeed);
 const allPass = requiredAssertions.every((a) => a.pass);
@@ -665,6 +738,6 @@ console.log("Tuning readout (read from runner.ts)");
 for (const [k, v] of tuningRows) console.log(`  ${k}: ${v}`);
 
 console.log(
-	`\nOverall (purity + spacing + warning + per-kind clearability + resize + vertical fit): ${allPass ? "PASS" : "FAIL"}`,
+	`\nOverall (purity + spacing + warning + per-kind clearability + resize + vertical fit + pose model): ${allPass ? "PASS" : "FAIL"}`,
 );
 process.exitCode = allPass ? 0 : 1;
