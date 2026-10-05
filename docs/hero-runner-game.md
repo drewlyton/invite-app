@@ -573,9 +573,11 @@ Four details here are load-bearing, and the first two were learned the hard way:
   touches React state.
 - **The slot reserves a constant height.** The line sits in a grid cell beside an
   invisible spacer holding the tallest message — the dead state's two lines,
-  rendered as `deadStatus(0, 0)`. Its zero-padded widths are constant, so the
-  zero scores reserve exactly the box any real final score needs. The spacer has
-  to carry `whitespace-pre-wrap` as well, or the newline would collapse and the
+  rendered as `deadStatus(MAX_SCORE, MAX_SCORE)`, the widest score the store can
+  hold, so the reserved box can never be narrower than a real final score line.
+  (`formatScore` pads to `SCORE_DIGITS` but never truncates, so zero-padding
+  alone does **not** bound the width.) The spacer has to carry
+  `whitespace-pre-wrap` as well, or the newline would collapse and the
   reserved height would be wrong. This is what stops the idle prompt wrapping on
   a narrow phone from resizing the slot, and stops switching states from shifting
   the hero. Switching does **not** use `display: none`, which is exactly the
