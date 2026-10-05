@@ -531,7 +531,9 @@ The hero holds the invitation, not the logistics: eyebrow, title, and subtitle
 centred, with the game band pinned to the bottom of the viewport. The `<hr>`, the
 date / time / location block, and the "RSVP by …" link are extracted into
 `EventDetails.astro` and rendered **either** inside the hero **or** in their own
-section between the hero and `#rsvp`, selected by `detailsBelowFold`.
+section between the hero and `#rsvp`, selected by `detailsBelowFold`. The link
+itself lives in `RsvpLink.astro` in two sizes: the original in-hero `hero` size
+and a compact one-line `ground` size for the runner theme (below).
 
 This is opt-in per theme because it changes what a visitor sees before scrolling,
 and it applies to `game-night-light` only. `default`, `game-night`, and `birthday`
@@ -541,11 +543,22 @@ The below-fold section also drops the `<hr>` the in-hero usage keeps — there i
 nothing above it to divide from — and carries the game ground's tint (see
 [Rendering](#rendering)), so it reads as the ground continuing past the hero's
 bottom edge. Its top and bottom padding match (`pt-10 pb-10 sm:pt-14 sm:pb-14`),
-so the date/time/location block and the RSVP link are centred in the tinted band
-rather than hugging its top edge. On short viewports (below ~640px height) that
-tint no longer
+so the date/time/location block is centred in the tinted band rather than hugging
+its top edge. On short viewports (below ~640px height) that tint no longer
 continues anything: the band is `display: none`, so the section still carries the
 theme's ground tint on its own.
+
+For a **runner** theme the "RSVP by …" link does not move below the fold with the
+rest of the details. It renders in the hero's game ground, in the compact `ground`
+size, so the scroll cue stays with the hero that owns the game. It is a
+**sibling** of the band, not a child: the band handles `Space`/`ArrowUp`/`W` on
+its own keydown, so a focusable link inside it would let `Space` start or jump the
+game instead of activating the link, and the band is `display: none` below ~640px
+viewport height, which would drop the cue entirely. A runner-less below-fold theme
+has no ground to put it in, so it keeps the link in `EventDetails` with the rest
+of the block; that combination does not exist today (only `game-night-light` sets
+`detailsBelowFold`, and it also has a runner), but `ShowRsvp={!theme.runner}`
+keeps the two concerns independent.
 
 ### The status line
 
@@ -620,10 +633,14 @@ touch the hero and are recorded here because they change the game-over behaviour
 
 ### Two consequences of the layout split
 
-- **The hero loses its scroll cue.** The "RSVP by …" link with its bouncing
-  chevrons was the only thing signalling that more content existed below. In the
-  `detailsBelowFold` layout nothing in the hero says so, beyond the status line. It
-  is a deliberate trade, not an oversight.
+- **The hero's scroll cue now lives in the game ground.** The "RSVP by …" link
+  with its bouncing chevrons is the thing signalling that more content exists
+  below. Moving the details below the fold would have taken it out of the hero
+  with them, so for a runner theme it now renders in the game ground at the bottom
+  of the hero instead (compact `ground` size, `absolute inset-x-0 bottom-2 z-20`).
+  The hero keeps its cue; the below-fold section simply carries the date / time /
+  location block. A below-fold theme *without* a runner has no ground to place it
+  in and would lose the cue, but no such theme exists today.
 - The title/subtitle spacing overrides that exist for the pixel themes were sized
   for a stacked block that has since moved out, so that gap needed re-checking by
   eye rather than being left to the old values.

@@ -1,9 +1,9 @@
 ---
 import Calendar from "@lucide/astro/icons/calendar";
-import ChevronDown from "@lucide/astro/icons/chevron-down";
 import Clock from "@lucide/astro/icons/clock";
 import MapPin from "@lucide/astro/icons/map-pin";
 import type { Theme } from "../lib/themes";
+import RsvpLink from "./RsvpLink.astro";
 
 interface Props {
 	date: string;
@@ -13,9 +13,22 @@ interface Props {
 	theme: Theme;
 	/** Render the divider rule above the details. Defaults to true. */
 	divider?: boolean;
+	/**
+	 * Render the "RSVP by …" link. Defaults to true. Runner themes move it into
+	 * the hero's game ground, so their below-fold details pass `false`.
+	 */
+	showRsvp?: boolean;
 }
 
-const { date, time, location, rsvpBy, theme, divider = true } = Astro.props;
+const {
+	date,
+	time,
+	location,
+	rsvpBy,
+	theme,
+	divider = true,
+	showRsvp = true,
+} = Astro.props;
 ---
 
 {divider && (
@@ -43,20 +56,4 @@ const { date, time, location, rsvpBy, theme, divider = true } = Astro.props;
 	</div>
 </div>
 
-<a
-	href="#rsvp"
-	class="mt-6 inline-flex items-center gap-2 font-body text-xl transition sm:mt-8 md:text-2xl"
-	style={`color: ${theme.heroText}; opacity: 0.75;`}
->
-	<ChevronDown
-		size={16}
-		class="h-4 w-4 motion-safe:animate-bounce-down"
-		aria-hidden="true"
-	/>
-	<span class="underline underline-offset-4">RSVP by {rsvpBy}</span>
-	<ChevronDown
-		size={16}
-		class="h-4 w-4 motion-safe:animate-bounce-down"
-		aria-hidden="true"
-	/>
-</a>
+{showRsvp && <RsvpLink rsvpBy={rsvpBy} theme={theme} />}

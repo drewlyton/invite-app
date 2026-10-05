@@ -1,0 +1,37 @@
+---
+import ChevronDown from "@lucide/astro/icons/chevron-down";
+import type { Theme } from "../lib/themes";
+
+interface Props {
+	rsvpBy: string;
+	theme: Theme;
+	/**
+	 * `hero` is the original in-hero lockup; `ground` is the compact one-line
+	 * variant rendered over the game ground, which has to share its height with
+	 * the ground fill and the runner.
+	 */
+	size?: "hero" | "ground";
+}
+
+const { rsvpBy, theme, size = "hero" } = Astro.props;
+
+const linkClass =
+	size === "ground"
+		? "inline-flex items-center gap-2 font-body text-sm whitespace-nowrap transition sm:text-base"
+		: "mt-6 inline-flex items-center gap-2 font-body text-xl transition sm:mt-8 md:text-2xl";
+
+const chevronClass =
+	size === "ground"
+		? "h-3.5 w-3.5 motion-safe:animate-bounce-down sm:h-4 sm:w-4"
+		: "h-4 w-4 motion-safe:animate-bounce-down";
+---
+
+<a
+	href="#rsvp"
+	class={linkClass}
+	style={`color: ${theme.heroText}; opacity: 0.75;`}
+>
+	<ChevronDown size={16} class={chevronClass} aria-hidden="true" />
+	<span class="underline underline-offset-4">RSVP by {rsvpBy}</span>
+	<ChevronDown size={16} class={chevronClass} aria-hidden="true" />
+</a>

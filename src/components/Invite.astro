@@ -5,6 +5,7 @@ import { deadStatus, IDLE_STATUS } from "../lib/runner-status";
 import { MAX_SCORE } from "../lib/scores";
 import type { Theme } from "../lib/themes";
 import EventDetails from "./EventDetails.astro";
+import RsvpLink from "./RsvpLink.astro";
 import RunnerGame from "./RunnerGame";
 
 interface Props {
@@ -259,6 +260,22 @@ const detailsGroundStyle = groundColor
 		textColor={theme.heroText}
 	/>
 )}
+	{/* When the runner theme moves its details below the fold, the "RSVP by …"
+	   link is the hero's only scroll cue, so it renders here in the game ground
+	   instead of with the details. A sibling of the band, not a child: the band
+	   handles Space/ArrowUp/W on its own keydown (a focusable link inside it
+	   would let Space start the game instead of activating the link) and is
+	   `display: none` below ~640px viewport height (which would drop the cue).
+	   `bottom-2` centres the ~20px line in the smallest (~36px) ground, and
+	   `z-20` puts it above the band (`z-0`) and `.hero-content` (`z-10`) without
+	   overlapping the content. No `pointer-events-none`: the hero's tap handler
+	   ignores interactive targets, so the link navigates while taps beside it
+	   still reach the game. */}
+	{theme.runner && theme.detailsBelowFold && (
+	<div class="absolute inset-x-0 bottom-2 z-20 text-center">
+		<RsvpLink rsvpBy={rsvp_by} theme={theme} size="ground" />
+	</div>
+)}
 </section>
 
 {/* When the details move out of the hero, they need their own vertical
@@ -280,6 +297,7 @@ const detailsGroundStyle = groundColor
 			rsvpBy={rsvp_by}
 			theme={theme}
 			divider={false}
+			showRsvp={!theme.runner}
 		/>
 	</section>
 )}
