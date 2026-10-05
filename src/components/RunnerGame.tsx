@@ -8,6 +8,7 @@ import {
 	step,
 	view,
 } from "../lib/runner";
+import { GROUND_FILL_ALPHA } from "../lib/runner-ground";
 import { DEAD_STATUS } from "../lib/runner-status";
 import { formatScore } from "../lib/score-format";
 import type { ScoreEntry } from "../lib/scores";
@@ -317,10 +318,12 @@ export default function RunnerGame({
 			// band, with the tiled dash strip along its top edge. Raising the ground
 			// line with `TUNING.groundMargin` would otherwise leave dead white space
 			// beneath it; the fill makes that region read as ground. Kept at low
-			// alpha so hero text that overlaps the band keeps its contrast.
+			// alpha so hero text that overlaps the band keeps its contrast; the value
+			// is `GROUND_FILL_ALPHA`, shared with the below-fold details section so
+			// both read as one ground.
 			const groundTop = s.groundY * px;
 			ctx.fillStyle = groundColor;
-			ctx.globalAlpha = 0.22;
+			ctx.globalAlpha = GROUND_FILL_ALPHA;
 			ctx.fillRect(0, groundTop, cssWidth, bandHeight - groundTop);
 			ctx.globalAlpha = 1;
 

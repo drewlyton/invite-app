@@ -415,10 +415,13 @@ than hard.
 - **The ground is filled, not just a line.** Raising `GROUND_MARGIN` lifts the
   ground line, and a bare dash strip floating there would leave dead white space
   beneath it. The band from `groundY` down to the bottom of the band is filled
-  with `theme.runner.ground` at `globalAlpha = 0.22` (≈ `#ecebe9` over the white
-  hero), with the dash strip drawn at full opacity along the top edge. That alpha
-  is an unmeasured feel knob and the single place to adjust the fill's weight.
-  Keep it muted, or it eats the hero text's contrast on short screens.
+  with `theme.runner.ground ?? theme.runner.color` at `GROUND_FILL_ALPHA` (0.22 in
+  `src/lib/runner-ground.ts`, ≈ `#ecebe9` over the white hero), with the dash strip
+  drawn at full opacity along the top edge. That alpha is an unmeasured feel knob
+  and the single place to adjust the fill's weight — the below-fold details section
+  reads the same constant and paints the same colour at the same alpha with
+  `color-mix`, so the section reads as the ground continuing rather than a separate
+  band. Keep it muted, or it eats the hero text's contrast on short screens.
 
 ## Sprites
 
@@ -532,6 +535,11 @@ section between the hero and `#rsvp`, selected by `detailsBelowFold`.
 This is opt-in per theme because it changes what a visitor sees before scrolling,
 and it applies to `game-night-light` only. `default`, `game-night`, and `birthday`
 render the details inside the hero exactly as before.
+
+The below-fold section also drops the `<hr>` the in-hero usage keeps — there is
+nothing above it to divide from — and carries the game ground's tint (see
+[Rendering](#rendering)), so it reads as the ground continuing past the hero's
+bottom edge.
 
 ### The status line
 
@@ -886,8 +894,8 @@ than hidden:
   motion (stars have no ambient drift), so the only difference there is structural.
   No live page is affected: only `30th-bday` and `first-bday` have content, and
   `game-night` is unreferenced.
-- The ground fill's `globalAlpha = 0.22` is an unmeasured guess, since no browser
-  was available to check contrast against the hero text.
+- The ground fill's `GROUND_FILL_ALPHA` (0.22) is an unmeasured guess, since no
+  browser was available to check contrast against the hero text.
 - `TUNING`, `Tuning`, and `AIR_TIME` are exported, and `createGame` accepts
 `tuning?: Partial<Tuning>`. This is a deliberate addition to the surface described
 above: it lets the debug page and harness read real values instead of hand-copied

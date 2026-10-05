@@ -11,15 +11,19 @@ interface Props {
 	location: string;
 	rsvpBy: string;
 	theme: Theme;
+	/** Render the divider rule above the details. Defaults to true. */
+	divider?: boolean;
 }
 
-const { date, time, location, rsvpBy, theme } = Astro.props;
+const { date, time, location, rsvpBy, theme, divider = true } = Astro.props;
 ---
 
+{divider && (
 <hr
 	class="my-8 w-12 sm:my-10"
 	style={`border-color: ${theme.accent}; opacity: 0.6;`}
 >
+)}
 
 <div
 	class="space-y-3 font-body text-xl sm:text-xl md:text-2xl"
