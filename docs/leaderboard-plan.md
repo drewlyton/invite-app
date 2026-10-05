@@ -99,8 +99,9 @@ Every submission is appended; grouping happens on read:
 
 Reading groups by `deviceId`, keeps the entry with the **highest** score for each device
 (using that entry's `name` and `at`), sorts by score descending then `at` ascending, and
-truncates to the limit. Malformed lines are skipped rather than throwing — a corrupt line
-must not take the whole board down.
+truncates to the limit. A device with two entries at the same maximum keeps the
+**earliest** submission, consistent with the global tie-break. Malformed lines are skipped
+rather than throwing — a corrupt line must not take the whole board down.
 
 ### Records are normalized, not echoed
 
@@ -113,6 +114,14 @@ input is never stored verbatim.
 
 `src/pages/api/scores/[eventId].ts`, with `export const prerender = false` like the RSVP
 route. Both verbs are covered by the existing per-IP middleware rate limit.
+
+**The event id is validated before it touches the filesystem** —
+`/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/` — because it names a file on disk. This is stricter
+than the RSVP route, which builds `data/<eventId>.ndjson` from the URL param with no check
+at all. That gap was investigated and is **not** a path traversal: Astro keeps an encoded
+`%2F` in the segment, so a crafted id produces a junk file *inside* `data/` rather than
+escaping it. Still worth closing on the RSVP route eventually, since the guard now exists
+to reuse.
 
 **`GET /api/scores/[eventId]`** → `200 { board: Entry[] }`
 
@@ -128,14 +137,42 @@ Validation, all server-side (`maxlength` is a browser suggestion):
 | Field | Rule |
 | --- | --- |
 | `deviceId` | String, `/^[A-Za-z0-9-]{8,64}$/` |
-| `name` | Uppercase, strip to `/^[A-Z0-9]+$/`, then length 1–8 |
+| `name` | Uppercase, **strip** to `/^[A-Z0-9]+$/`, then length 1–8 |
 | `score` | Integer, `>= 0`, `<= MAX_SCORE` |
+| `at` | Never read from the client; stamped server-side as an ISO timestamp |
+
+A note on `name`, because the settled-decisions table says only "no spaces" while the rule
+here is *strip*. Those are not the same, and the implementation follows the strip: `drew sm`
+normalizes to `DREWSM` and is **accepted**, not rejected. Stripping is the deliberate
+choice — forgiving is right for a submit button, since failing a whole submission over a
+stray character is worse than cleaning it. The input should nonetheless stop a space being
+typed in the first place, which is what "no spaces" was about.
 
 `MAX_SCORE` should be **derived from `TUNING`** rather than hardcoded — roughly
 `maxSpeed × 3600 / scoreUnit`, an hour of perfect running, which is generous while still
 rejecting absurd values. Deriving it keeps the constant honest if the game is ever
 re-tuned; a literal here would silently drift, which is the bug class this project has hit
 more than once.
+
+### Accepted gaps
+
+Known and deliberate, so they are not mistaken for oversights:
+
+- **No event-existence check.** Any slug-shaped id writes a file, including ids with no
+  content entry. Bounded by the slug pattern and the rate limiter, and it matches the RSVP
+  route's behaviour. Not worth a `getEntry` lookup on this path.
+- **The HTTP contract is not covered by the headless harness.** `verify-scores.ts` drives
+  the store directly, because the route cannot be imported under Node's type stripping
+  (it uses a `.js` specifier, which type stripping does not rewrite to `.ts`). The route's
+  201/400 behaviour was verified live with `curl` instead. Stage 2 exercises both verbs
+  for real from the browser, which is the meaningful regression cover.
+- **One `.ts` import specifier.** `scores.ts` imports `runner.ts` as `"./runner.ts"`
+  rather than the repo's usual `"./runner.js"`, because the harness must be able to import
+  `runner.ts` under Node. Vite, Astro and `tsc` all accept it; it is a deliberate
+  inconsistency, not an accident.
+- **ISO strings are compared with `localeCompare`.** Correct for ASCII timestamps, but a
+  plain comparison would be locale-independent and cheaper. Left as is; not worth the
+  churn.
 
 ## Client behaviour
 
