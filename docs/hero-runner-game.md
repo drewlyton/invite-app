@@ -540,7 +540,10 @@ render the details inside the hero exactly as before.
 The below-fold section also drops the `<hr>` the in-hero usage keeps — there is
 nothing above it to divide from — and carries the game ground's tint (see
 [Rendering](#rendering)), so it reads as the ground continuing past the hero's
-bottom edge. On short viewports (below ~640px height) that tint no longer
+bottom edge. Its top and bottom padding match (`pt-10 pb-10 sm:pt-14 sm:pb-14`),
+so the date/time/location block and the RSVP link are centred in the tinted band
+rather than hugging its top edge. On short viewports (below ~640px height) that
+tint no longer
 continues anything: the band is `display: none`, so the section still carries the
 theme's ground tint on its own.
 

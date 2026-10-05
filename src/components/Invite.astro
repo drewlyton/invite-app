@@ -265,10 +265,12 @@ const detailsGroundStyle = groundColor
    rhythm: they used to be centred as part of the hero content block. They also
    drop the divider, because below the fold there is nothing above them to
    divide from, and they carry the ground tint so the section reads as the game
-   ground continuing. */}
+   ground continuing. The top and bottom padding match, so the date/time/
+   location block and the RSVP link sit centred in the tinted band rather than
+   hugging its top edge. */}
 {theme.detailsBelowFold && (
 	<section
-		class="relative px-6 pt-10 pb-2 text-center sm:pt-14"
+		class="relative px-6 pt-10 pb-10 text-center sm:pt-14 sm:pb-14"
 		style={detailsGroundStyle}
 	>
 		<EventDetails
