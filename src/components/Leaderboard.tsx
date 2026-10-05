@@ -177,11 +177,18 @@ export default function Leaderboard({
 	// Per-open reset, and the prefill. Runs on every open, so the read-only mode
 	// never inherits a previous submit's highlight, and the show/hide effect above
 	// has already made the dialog modal so the input can take focus.
+	//
+	// The reset also runs on *close*, not only on open. Otherwise `submitted` is
+	// still set in the render that reopens the dialog, and the "park focus after
+	// submit" effect below fires with that stale value and steals focus from the
+	// freshly prefilled input. A second record in the same session then opens with
+	// the handle filled in but unfocused, so `Enter` does nothing — exactly the
+	// one-tap re-submit the prefill exists to provide.
 	useEffect(() => {
-		if (!open) return;
 		setSubmitted(null);
 		setSubmitError(null);
 		setSubmitting(false);
+		if (!open) return;
 		if (pendingScore != null) {
 			setName(readStoredName(eventId));
 			setDeviceId(readDeviceId(eventId));
@@ -445,6 +452,17 @@ function Board({
 	const entries: { entry: ScoreEntry; pending: boolean }[] = [
 		...state.board.map((entry) => ({ entry, pending: false })),
 	];
+	// The server board is truncated to `BOARD_LIMIT`, so a score below the cut
+	// would vanish at the very moment it is submitted — the disappearance the
+	// pending row exists to prevent. Keep showing it, ranked last. It is below
+	// every fetched row by definition (otherwise the server would have included
+	// it), so appending preserves score order and the `at` ascending tie-break.
+	if (
+		submittedEntry &&
+		!state.board.some((entry) => entry.deviceId === submittedEntry.deviceId)
+	) {
+		entries.push({ entry: submittedEntry, pending: false });
+	}
 	if (pending) {
 		// Ties place the pending row after existing equal scores: it was submitted
 		// later, which matches the server's `at` ascending tie-break. The row is
