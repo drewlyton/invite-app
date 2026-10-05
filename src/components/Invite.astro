@@ -1,6 +1,15 @@
 ---
 import type { CollectionEntry } from "astro:content";
-import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
+import {
+	GROUND_FILL_ALPHA,
+	GROUND_TEXTURE,
+	GROUND_TEXTURE_ALPHA,
+	GROUND_TEXTURE_CSS_SCALE,
+	GROUND_TEXTURE_DASH_HEIGHT,
+	GROUND_TEXTURE_TILE_HEIGHT,
+	GROUND_TEXTURE_TILE_WIDTH,
+	resolveGroundColor,
+} from "../lib/runner-ground";
 import { deadStatus, IDLE_STATUS } from "../lib/runner-status";
 import { MAX_SCORE } from "../lib/scores";
 import type { Theme } from "../lib/themes";
@@ -76,12 +85,26 @@ const CLOUD_PARALLAX_RATE = "0.30";
 // bottom edge. The canvas paints `resolveGroundColor(ground, color)` at
 // `GROUND_FILL_ALPHA` over the hero; `color-mix` paints the same colour at the
 // same alpha over the page, which matches the rendered result without a
-// full-opacity slab. Themes without a runner get no tint.
+// full-opacity slab. The same `GROUND_TEXTURE` dirt dashes the canvas blits are
+// rebuilt here as a repeating SVG background, so the section also reads as 8-bit
+// stratified soil rather than flat tint. One list feeds both renderers, so they
+// cannot drift. Themes without a runner get no tint and no texture.
 const groundColor = theme.runner
 	? resolveGroundColor(theme.runner.ground, theme.runner.color)
 	: null;
+const groundTextureRects = GROUND_TEXTURE.map(
+	(s) => `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${GROUND_TEXTURE_DASH_HEIGHT}"/>`,
+).join("");
+// The SVG is percent-encoded (`shape-rendering="crispEdges"` keeps the dashes
+// from being antialiased) and quoted with single quotes inside `url(...)`, so the
+// URL carries no raw `"`, `<`, `>`, or `#`. `background-size` scales one tile to
+// CSS px using the same 2 px-per-unit stand-in the canvas's live `pixelScale`
+// cannot be reproduced with here.
+const groundTextureUrl = `url('data:image/svg+xml,${encodeURIComponent(
+	`<svg xmlns="http://www.w3.org/2000/svg" width="${GROUND_TEXTURE_TILE_WIDTH}" height="${GROUND_TEXTURE_TILE_HEIGHT}" shape-rendering="crispEdges"><g fill="${groundColor}" fill-opacity="${GROUND_TEXTURE_ALPHA}">${groundTextureRects}</g></svg>`,
+)}')`;
 const detailsGroundStyle = groundColor
-	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent);`
+	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent); background-image: ${groundTextureUrl}; background-size: ${GROUND_TEXTURE_TILE_WIDTH * GROUND_TEXTURE_CSS_SCALE}px ${GROUND_TEXTURE_TILE_HEIGHT * GROUND_TEXTURE_CSS_SCALE}px;`
 	: "";
 ---
 
@@ -285,10 +308,10 @@ const detailsGroundStyle = groundColor
 {/* When the details move out of the hero, they need their own vertical
    rhythm: they used to be centred as part of the hero content block. They also
    drop the divider, because below the fold there is nothing above them to
-   divide from, and they carry the ground tint so the section reads as the game
-   ground continuing. The top and bottom padding match, so the date/time/
-   location block sits centred in the tinted band rather than hugging its top
-   edge. The runner theme's RSVP link is not here (`showRsvp={!theme.runner}`);
+   divide from, and they carry the ground tint and dirt texture so the section
+   reads as the game ground continuing. The top and bottom padding match, so the
+   date/time/ location block sits centred in the tinted band rather than hugging
+   its top edge. The runner theme's RSVP link is not here (`showRsvp={!theme.runner}`);
    it stays in the hero's ground. */}
 {theme.detailsBelowFold && (
 	<section

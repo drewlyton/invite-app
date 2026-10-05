@@ -384,8 +384,9 @@ At `airTime ≈ 0.51 s` a jump covers ~46 units of ground at start speed and ~14
 units at max speed. That is the reference for how wide a cluster the spacing rule
 will permit.
 
-**Ground line.** A tiled dash/pebble strip — the only scrolling element in the
-idle state, and even that is frozen while idle.
+**Ground line.** A tiled dash strip along the top edge and the staggered dirt
+dashes below it are the ground's scrolling elements, and both are frozen while
+idle.
 
 ### Collision
 
@@ -423,6 +424,22 @@ than hard.
   `color-mix`, so on viewports tall enough to show the band the section reads as the
   ground continuing rather than a separate band. Keep it muted, or it eats the hero
   text's contrast on short screens.
+- **The ground carries a shared 8-bit dirt texture.** `GROUND_TEXTURE` in
+  `src/lib/runner-ground.ts` is the single list of staggered horizontal dirt
+  dashes — `{ x, y, w }`, each one world unit tall, in world units with `y`
+  measured down from the ground line — inside one
+  `GROUND_TEXTURE_TILE_WIDTH` × `GROUND_TEXTURE_TILE_HEIGHT`
+  (`TUNING.groundMargin`) tile. The rows are offset from each other so the ground
+  reads as stratified soil. Both renderers consume that list, so a dash added or
+  moved there lands in both. The canvas tiles it at `pixelScale` and scrolls it
+  with `groundOffset`, batching every dash of the visible tiles into one
+  `beginPath()`/`fill()` at `GROUND_TEXTURE_ALPHA` (0.3) over the ground colour,
+  so the grain costs one rasterisation. The below-fold section rebuilds the same
+  list into a percent-encoded, `crispEdges` SVG data-URI background and scales one
+  tile by `GROUND_TEXTURE_CSS_SCALE` (2 CSS px per world unit) — the canvas's
+  live `pixelScale` (≈1.5–2.1) cannot be reproduced on a remote element. The alpha
+  stays low so the texture reads as grain, not a pattern, and the hero/details text
+  keeps its contrast.
 
 ## Sprites
 

@@ -8,7 +8,14 @@ import {
 	step,
 	view,
 } from "../lib/runner";
-import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
+import {
+	GROUND_FILL_ALPHA,
+	GROUND_TEXTURE,
+	GROUND_TEXTURE_ALPHA,
+	GROUND_TEXTURE_DASH_HEIGHT,
+	GROUND_TEXTURE_TILE_WIDTH,
+	resolveGroundColor,
+} from "../lib/runner-ground";
 import { deadStatus, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
@@ -322,13 +329,41 @@ export default function RunnerGame({
 			ctx.fillRect(0, groundTop, cssWidth, bandHeight - groundTop);
 			ctx.globalAlpha = 1;
 
-			// Dash strip: the only part of the ground that scrolls.
-			const tile = 16;
+			// Dash strip and dirt dashes: the parts of the ground that scroll.
+			const dashTile = 16;
 			const dash = 6;
-			const offset = ((s.groundOffset % tile) + tile) % tile;
-			for (let x = -offset; x < s.worldWidth + tile; x += tile) {
+			const offset = ((s.groundOffset % dashTile) + dashTile) % dashTile;
+			for (let x = -offset; x < s.worldWidth + dashTile; x += dashTile) {
 				ctx.fillRect(x * px, groundTop, dash * px, 2);
 			}
+
+			// Dirt dashes, tiled at `GROUND_TEXTURE_TILE_WIDTH` and scrolling with
+			// the ground. Drawn as one batched path (a `rect()` per dash, a single
+			// `fill()`) so the grain costs one rasterisation rather than a `fillRect`
+			// per dash. Each dash is one world unit tall and `w` units wide.
+			// `fillStyle` is still `groundColor`; `globalAlpha` is restored
+			// before the obstacles and player draw.
+			const textureTile = GROUND_TEXTURE_TILE_WIDTH;
+			const textureOffset =
+				((s.groundOffset % textureTile) + textureTile) % textureTile;
+			ctx.globalAlpha = GROUND_TEXTURE_ALPHA;
+			ctx.beginPath();
+			for (
+				let x = -textureOffset;
+				x < s.worldWidth + textureTile;
+				x += textureTile
+			) {
+				for (const dash of GROUND_TEXTURE) {
+					ctx.rect(
+						(x + dash.x) * px,
+						groundTop + dash.y * px,
+						dash.w * px,
+						GROUND_TEXTURE_DASH_HEIGHT * px,
+					);
+				}
+			}
+			ctx.fill();
+			ctx.globalAlpha = 1;
 
 			// Placeholder rectangles. One fillRect per rect, world units -> CSS px.
 			ctx.globalAlpha = 0.7;
