@@ -16,6 +16,11 @@ import {
 	GROUND_TEXTURE_TILE_WIDTH,
 	resolveGroundColor,
 } from "../lib/runner-ground";
+import {
+	drawBitmap,
+	PLAYER_PALETTE,
+	PLAYER_SPRITES,
+} from "../lib/runner-sprites";
 import { deadStatus, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
@@ -24,7 +29,6 @@ interface Props {
 	eventId: string;
 	color: string;
 	ground?: string;
-	textColor: string;
 }
 
 type Phase = Game["phase"];
@@ -47,12 +51,7 @@ const INTERACTIVE_SELECTOR =
  * during play — React state only covers the dialog and the reduced-motion
  * `interactive` flag.
  */
-export default function RunnerGame({
-	eventId,
-	color,
-	ground,
-	textColor,
-}: Props) {
+export default function RunnerGame({ eventId, color, ground }: Props) {
 	const bandRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const [interactive, setInteractive] = useState(false);
@@ -365,19 +364,29 @@ export default function RunnerGame({
 			ctx.fill();
 			ctx.globalAlpha = 1;
 
-			// Placeholder rectangles. One fillRect per rect, world units -> CSS px.
+			// Obstacles: placeholder rectangles. One fillRect per rect, world units ->
+			// CSS px. The player is a multi-colour sprite now; the obstacles' art is
+			// still unbuilt.
 			ctx.globalAlpha = 0.7;
 			ctx.fillStyle = color;
 			for (const o of s.obstacles) {
 				ctx.fillRect(o.x * px, o.y * px, o.w * px, o.h * px);
 			}
 			ctx.globalAlpha = 1;
-			ctx.fillStyle = s.phase === "dead" ? textColor : color;
-			ctx.fillRect(
-				s.player.x * px,
-				s.player.y * px,
-				s.player.w * px,
-				s.player.h * px,
+
+			// Player: a hand-authored pixel sprite. `drawBitmap` groups the bitmap's
+			// cells by colour and emits one batched path per colour, so the whole
+			// character costs a handful of fills rather than one per pixel. The modulo
+			// lets a single-frame pose (jump, dead) hold frame 0 while the two-frame
+			// poses cycle.
+			const frames = PLAYER_SPRITES[s.player.pose];
+			drawBitmap(
+				ctx,
+				frames[s.player.frame % frames.length],
+				PLAYER_PALETTE,
+				s.player.x,
+				s.player.y,
+				px,
 			);
 		};
 
@@ -409,7 +418,10 @@ export default function RunnerGame({
 			}
 			draw();
 
-			if (view(game).phase === "running" && !paused && inView) {
+			// Keep animating while idle (the player bob) as well as while running; only
+			// death stops the loop. `paused` and `inView` still gate it, and reduced
+			// motion never reaches here.
+			if (view(game).phase !== "dead" && !paused && inView) {
 				raf = requestAnimationFrame(frame);
 				return;
 			}
@@ -456,7 +468,7 @@ export default function RunnerGame({
 
 		const startLoop = (): void => {
 			if (reduced || raf || paused || !inView) return;
-			if (view(game).phase !== "running") return;
+			if (view(game).phase === "dead") return;
 			raf = requestAnimationFrame(frame);
 		};
 
@@ -476,6 +488,7 @@ export default function RunnerGame({
 				startLoop();
 				return;
 			}
+			const wasRunning = s.phase === "running";
 			if (s.phase === "idle") {
 				runBestRef.current = s.highScore;
 				game = start(game);
@@ -486,7 +499,10 @@ export default function RunnerGame({
 			const next = view(game);
 			setPhaseAttr("running");
 			writeStatus(runningStatus(next.highScore, next.score));
-			pointerJump = true;
+			// Starting or restarting must not jump: the run opens on the push intro,
+			// and the first jump is a separate input. Only a tap that lands while a
+			// run is already in flight queues a jump.
+			if (wasRunning) pointerJump = true;
 			startLoop();
 		};
 
@@ -620,6 +636,12 @@ export default function RunnerGame({
 			) {
 				band.focus({ preventScroll: true });
 			}
+
+			// Idle now animates too (the player bob), so the loop must be running
+			// before the first input. Under reduced motion `reduced` is true and
+			// `startLoop` returns immediately, leaving the one static idle frame that
+			// `draw()` already painted above.
+			startLoop();
 		}
 
 		return () => {
@@ -639,7 +661,7 @@ export default function RunnerGame({
 			tapTarget.removeEventListener("pointercancel", onPointerCancel);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
-	}, [eventId, color, groundColor, textColor]);
+	}, [eventId, color, groundColor]);
 
 	return (
 		<>

@@ -93,7 +93,8 @@ const groundColor = theme.runner
 	? resolveGroundColor(theme.runner.ground, theme.runner.color)
 	: null;
 const groundTextureRects = GROUND_TEXTURE.map(
-	(s) => `<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${GROUND_TEXTURE_DASH_HEIGHT}"/>`,
+	(s) =>
+		`<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${GROUND_TEXTURE_DASH_HEIGHT}"/>`,
 ).join("");
 // The SVG is percent-encoded (`shape-rendering="crispEdges"` keeps the dashes
 // from being antialiased) and quoted with single quotes inside `url(...)`, so the
@@ -134,11 +135,11 @@ const detailsGroundStyle = groundColor
 	))}
 
 	{theme.balloons?.colors.map((color, i) => (
-		<div
-			class={`hero-balloons hero-balloons-${i} pointer-events-none absolute inset-0 motion-safe:animate-balloon-float`}
-			style={`color: ${color}; animation-delay: ${-i * 1.1}s;`}
-		/>
-	))}
+	<div
+		class={`hero-balloons hero-balloons-${i} pointer-events-none absolute inset-0 motion-safe:animate-balloon-float`}
+		style={`color: ${color}; animation-delay: ${-i * 1.1}s;`}
+	/>
+))}
 
 	{theme.clouds && (
 	<>
@@ -281,7 +282,6 @@ const detailsGroundStyle = groundColor
 		eventId={event.id}
 		color={theme.runner.color}
 		ground={theme.runner.ground}
-		textColor={theme.heroText}
 	/>
 )}
 	{/* When the runner theme moves its details below the fold, the "RSVP by …"
