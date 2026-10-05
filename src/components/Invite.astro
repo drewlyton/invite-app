@@ -149,12 +149,17 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	   and the game band in the DOM: the band is focused on load, so forward Tab
 	   from the band skips the button and continues into the page below the hero,
 	   while Shift+Tab reaches the button directly. */}
+	{/* `bg-white` is opaque on purpose: the sky layers must not read through the
+	   button, and an `opacity-*` on the element would make the white translucent.
+	   The understated at-rest look comes from the 70% colour instead, so `text`
+	   and the `border-current` border share the same faded value; hover and
+	   focus-visible restore it. The button inherits the hero's `color`, which is
+	   why there is no per-element colour here. */}
 	{theme.runner && (
 	<button
 		type="button"
 		data-leaderboard-open
-		class="absolute top-4 right-4 z-20 inline-flex min-h-11 items-center justify-center border-2 border-current px-3 font-heading text-[10px] tracking-wide uppercase opacity-70 transition hover:opacity-100 focus-visible:opacity-100 sm:top-6 sm:right-6"
-		style={`color: ${theme.heroText};`}
+		class="absolute top-4 right-4 z-20 inline-flex min-h-11 items-center justify-center border-2 border-current bg-white px-3 font-heading text-[10px] tracking-wide text-current/70 uppercase transition hover:text-current focus-visible:text-current sm:top-6 sm:right-6"
 	>
 		HIGH SCORES
 	</button>
