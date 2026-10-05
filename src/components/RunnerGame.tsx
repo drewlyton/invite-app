@@ -9,7 +9,7 @@ import {
 	view,
 } from "../lib/runner";
 import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
-import { DEAD_STATUS, runningStatus } from "../lib/runner-status";
+import { DEAD_STATUS, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
 
@@ -441,8 +441,12 @@ export default function RunnerGame({
 				runBestRef.current = s.highScore;
 				game = start(game);
 			}
+			// Re-read the game after the idle mutation, exactly as the dead branch
+			// does: `start` resets the score, so writing from the stale `s` would
+			// only be correct by coincidence.
+			const next = view(game);
 			setPhaseAttr("running");
-			writeStatus(runningStatus(s.highScore, s.score));
+			writeStatus(runningStatus(next.highScore, next.score));
 			pointerJump = true;
 			startLoop();
 		};
@@ -582,6 +586,10 @@ export default function RunnerGame({
 		return () => {
 			stopLoop();
 			delete heroHost.dataset.phase;
+			// React may remount the island, so put the line back to the state a fresh
+			// idle game starts from rather than leaving the last score or game-over
+			// message in place. `writeStatus` keeps `lastStatus` in step.
+			writeStatus(IDLE_STATUS);
 			resizeObserver.disconnect();
 			intersection?.disconnect();
 			band.removeEventListener("keydown", onKeyDown);

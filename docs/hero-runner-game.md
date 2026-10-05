@@ -420,8 +420,9 @@ than hard.
   drawn at full opacity along the top edge. That alpha is an unmeasured feel knob
   and the single place to adjust the fill's weight — the below-fold details section
   reads the same constant and paints the same colour at the same alpha with
-  `color-mix`, so the section reads as the ground continuing rather than a separate
-  band. Keep it muted, or it eats the hero text's contrast on short screens.
+  `color-mix`, so on viewports tall enough to show the band the section reads as the
+  ground continuing rather than a separate band. Keep it muted, or it eats the hero
+  text's contrast on short screens.
 
 ## Sprites
 
@@ -539,7 +540,9 @@ render the details inside the hero exactly as before.
 The below-fold section also drops the `<hr>` the in-hero usage keeps — there is
 nothing above it to divide from — and carries the game ground's tint (see
 [Rendering](#rendering)), so it reads as the ground continuing past the hero's
-bottom edge.
+bottom edge. On short viewports (below ~640px height) that tint no longer
+continues anything: the band is `display: none`, so the section still carries the
+theme's ground tint on its own.
 
 ### The status line
 
@@ -587,11 +590,17 @@ touch the hero and are recorded here because they change the game-over behaviour
 - A `HIGH SCORES` button is server-rendered in the hero (top-right, above the sky
   layers, in the theme's font) and opens the board read-only. It works under reduced
   motion and when the band is hidden by a short viewport, because viewing the
-  standings is not play.
+  standings is not play. At rest it is an opaque white button (`bg-white`) whose
+  text and `border-current` border share the same 70%-alpha value of the hero's
+  colour; the white is opaque on purpose so the sky layers do not read through,
+  which is also why the faded look comes from the colour rather than an element
+  `opacity`, and hover / `focus-visible` restore full colour.
 - On a new personal best the island opens a native `<dialog>` modal over the hero.
-  The game-over message now lives in the status line, which the centred dialog and
-  its backdrop cover while it is open; the band's duplicate line and its
-  `leaderboardOpen` suppression are both gone. The dialog is a **sibling** of the
+  The game-over message now lives in the status line; the centred dialog overlays
+  it while open, and the message stays behind the dialog's translucent
+  `backdrop:bg-black/60` — faintly visible through it rather than covered. The
+  band's duplicate line and its `leaderboardOpen` suppression are both gone. The
+  dialog is a **sibling** of the
   band, never a child: below ~640px viewport height the band is `display: none`,
   and a modal inside a hidden subtree does not render even from the top layer.
 
