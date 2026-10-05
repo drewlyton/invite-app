@@ -7,8 +7,8 @@ Companion to [`hero-runner-game.md`](./hero-runner-game.md), which owns the game
 its band, phases, focus behaviour and `Space` semantics. This document owns the scoring
 feature and the staged plan for building it.
 
-Status: **Stages 1–2 implemented.** Stages are implemented one at a time and each is
-reviewed before the next is dispatched.
+Status: **Stages 1–3 implemented.** Stage 4 is a verification-and-docs pass. Stages are
+implemented one at a time and each is reviewed before the next is dispatched.
 
 ## Settled decisions
 
@@ -82,6 +82,22 @@ Consequences worth knowing:
 - Gating on a personal best is also the anti-spam rule: every score that reaches the
   server is a genuine improvement *for that device*, so the board cannot fill with junk
   from someone mashing submit.
+
+### The seed, and what "reproducible" actually means
+
+The component seeds each island mount with `(Date.now() ^ Math.random())`, **not**
+`createGame`'s default of `1`. So the obstacle sequence is:
+
+- **constant within one page session**, because `restart()` reuses `game.seed` — every run
+  after the first replays the same layout;
+- **different on every page load**, so two visitors never face the same sequence.
+
+This matters twice. Practically, it is why the trigger can be tested by "die immediately
+three times": all three runs in a session are identical, so an identical input schedule
+gives an identical score, which is what makes run 2 a genuine non-record. And for the
+board itself, it means scores are compared across *different* obstacle layouts — a small
+fairness wrinkle of the same family as the wide-screen advantage. Accepted for banter, and
+arguably a feature: nobody can memorise a layout or share a "perfect run".
 
 ## Data and API
 
@@ -215,8 +231,21 @@ interface Props {
   onClose: () => void;
   state: BoardState;
   onRetry: () => void;
-  pendingScore?: number;   // Stage 3 only; its absence is what keeps the board read-only
+  eventId: string;                                     // storage keys and the POST URL
+  onSubmitted?: (entry: ScoreEntry, board: ScoreEntry[]) => void;
+  pendingScore?: number;   // its absence is what keeps the board read-only
 }
+```
+
+`eventId` and `onSubmitted` were not in Stage 2's listing and had to be added: submission
+is owned by `Leaderboard` (it needs the per-event `localStorage` keys and the `POST` URL)
+but the board's `state` is owned by `RunnerGame`, so the returned board is handed back
+through a callback rather than refetched.
+
+The pending row's rank is a **lower bound**, not a fact: the server already truncated the
+board to `BOARD_LIMIT`, so a score worse than every fetched row only has a known floor. The
+pending row is deliberately **not** re-truncated, so a player always sees their own score
+— at rank 11 if that is where it lands — rather than watching it silently vanish.
 ```
 
 A discriminated union rather than `entries | null`, so "no scores yet" and "not fetched
@@ -240,7 +269,9 @@ This matters because `Space` is the only game button, so focus *is* the input ro
   that it *avoided* that problem, which is exactly backwards.
 - **`Space` closes** (skip/retry) and **`Enter` submits.** This preserves the existing
   reflex exactly — mashing space after dying just starts another run — and makes an
-  accidental blank submit impossible.
+  accidental blank submit impossible. `Space` does **not** close while the handle input
+  holds focus, so a player mid-typing is never thrown out. It closes in read-only mode
+  too; the read-only *content* is unchanged by that, only the key.
 - `Escape` closes, which in personal-best mode means forfeiting that score.
 
 ### Why a native `<dialog>`
