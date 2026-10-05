@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
 	createGame,
 	type Game,
@@ -8,6 +8,9 @@ import {
 	step,
 	view,
 } from "../lib/runner";
+import { formatScore } from "../lib/score-format";
+import type { ScoreEntry } from "../lib/scores";
+import Leaderboard, { type BoardState } from "./Leaderboard";
 
 interface Props {
 	eventId: string;
@@ -47,6 +50,58 @@ export default function RunnerGame({
 	const [interactive, setInteractive] = useState(false);
 	const hintId = useId();
 	const groundColor = ground ?? color;
+
+	const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+	const [board, setBoard] = useState<BoardState>({ status: "loading" });
+	const openButtonRef = useRef<HTMLButtonElement | null>(null);
+
+	// Prefetch the board once on mount and hold it in memory, so opening the
+	// dialog shows no loading flash. A skeleton is for a genuine cold fetch only.
+	// The endpoint is never allowed to break anything: a failure just becomes the
+	// board region's error state, which carries its own retry.
+	const loadBoard = useCallback(async (): Promise<void> => {
+		setBoard({ status: "loading" });
+		try {
+			const response = await fetch(`/api/scores/${eventId}`);
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const data = (await response.json()) as { board?: ScoreEntry[] };
+			setBoard({ status: "ready", board: data.board ?? [] });
+		} catch {
+			setBoard({ status: "error" });
+		}
+	}, [eventId]);
+
+	useEffect(() => {
+		void loadBoard();
+	}, [loadBoard]);
+
+	// Bind the hero's HIGH SCORES button regardless of `interactive`: viewing the
+	// standings is not play, so it must keep working under reduced motion, where
+	// the band is `tabindex="-1"` and the game is off. The button is
+	// server-rendered in Invite.astro and found by attribute, the same idiom as
+	// `[data-hero]` and `[data-parallax]`.
+	useEffect(() => {
+		const hero = bandRef.current?.closest("[data-hero]");
+		const button = hero?.querySelector<HTMLButtonElement>(
+			"[data-leaderboard-open]",
+		);
+		if (!button) return;
+		openButtonRef.current = button;
+		const onClick = (): void => setLeaderboardOpen(true);
+		button.addEventListener("click", onClick);
+		return () => {
+			button.removeEventListener("click", onClick);
+			openButtonRef.current = null;
+		};
+	}, []);
+
+	// Escape and the close button both land here. Focus returns to the button
+	// deliberately: it is the trigger the keyboard user left off at, and the band
+	// is focused on load by its own effect, not this one.
+	const closeLeaderboard = useCallback((): void => {
+		setLeaderboardOpen(false);
+		openButtonRef.current?.focus({ preventScroll: true });
+	}, []);
 
 	useEffect(() => {
 		const band = bandRef.current;
@@ -203,9 +258,6 @@ export default function RunnerGame({
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		};
 
-		const pad = (n: number): string =>
-			String(Math.max(0, Math.floor(n))).padStart(5, "0");
-
 		const draw = (): void => {
 			const s = view(game);
 			const px = s.pixelScale;
@@ -255,7 +307,11 @@ export default function RunnerGame({
 				ctx.fillStyle = textColor;
 				ctx.font = "12px ui-monospace, monospace";
 				ctx.textAlign = "left";
-				ctx.fillText(`HI ${pad(s.highScore)}   ${pad(s.score)}`, 6, 15);
+				ctx.fillText(
+					`HI ${formatScore(s.highScore)}   ${formatScore(s.score)}`,
+					6,
+					15,
+				);
 			}
 		};
 
@@ -492,26 +548,40 @@ export default function RunnerGame({
 	}, [eventId, color, groundColor, textColor]);
 
 	return (
-		// biome-ignore lint/a11y/useSemanticElements: <fieldset> is form grouping semantics; this is a labeled game region, not a form.
-		<div
-			ref={bandRef}
-			className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
-			tabIndex={interactive ? 0 : -1}
-			role="group"
-			aria-label="Birthday runner mini-game"
-			aria-describedby={hintId}
-			style={{ touchAction: "manipulation" }}
-		>
-			<canvas ref={canvasRef} className="block h-full w-full" />
-			<p id={hintId} className="sr-only">
-				Press space, the up arrow, or W to jump. Press space or enter to restart
-				after a crash. Tap the hero to play.
-			</p>
-			{interactive && phase === "dead" && (
-				<p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-body text-sm text-stone-500">
-					Game over — press space to retry
+		<>
+			{/* biome-ignore lint/a11y/useSemanticElements: <fieldset> is form grouping semantics; this is a labeled game region, not a form. */}
+			<div
+				ref={bandRef}
+				className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
+				tabIndex={interactive ? 0 : -1}
+				role="group"
+				aria-label="Birthday runner mini-game"
+				aria-describedby={hintId}
+				style={{ touchAction: "manipulation" }}
+			>
+				<canvas ref={canvasRef} className="block h-full w-full" />
+				<p id={hintId} className="sr-only">
+					Press space, the up arrow, or W to jump. Press space or enter to
+					restart after a crash. Tap the hero to play.
 				</p>
-			)}
-		</div>
+				{interactive && phase === "dead" && (
+					<p className="pointer-events-none absolute inset-x-0 bottom-2 text-center font-body text-sm text-stone-500">
+						Game over — press space to retry
+					</p>
+				)}
+			</div>
+			{/*
+			 * The dialog is a sibling of the band, never a child. Below ~640px viewport
+			 * height the band is `display: none`, and a modal in a `display:none`
+			 * subtree would not render even from the top layer; the button must keep
+			 * opening the board when the band is hidden.
+			 */}
+			<Leaderboard
+				open={leaderboardOpen}
+				onClose={closeLeaderboard}
+				state={board}
+				onRetry={loadBoard}
+			/>
+		</>
 	);
 }

@@ -141,6 +141,25 @@ const CLOUD_PARALLAX_RATE = "0.30";
 	</>
 )}
 
+	{/* Alternate entry point to the leaderboard. Server-rendered here, next to
+	   the theme, and bound by the island through `[data-leaderboard-open]` — the
+	   same idiom as `[data-hero]` and `[data-parallax]`. `z-20` puts it above the
+	   sky layers (`.hero-content` is z-10, the cloud strip is z-0) and the 44px
+	   minimum keeps it tappable. It is deliberately placed before `.hero-content`
+	   and the game band in the DOM: the band is focused on load, so forward Tab
+	   from the band skips the button and continues into the page below the hero,
+	   while Shift+Tab reaches the button directly. */}
+	{theme.runner && (
+	<button
+		type="button"
+		data-leaderboard-open
+		class="absolute top-4 right-4 z-20 inline-flex min-h-11 items-center justify-center border-2 border-current px-3 font-heading text-[10px] tracking-wide uppercase opacity-70 transition hover:opacity-100 focus-visible:opacity-100 sm:top-6 sm:right-6"
+		style={`color: ${theme.heroText};`}
+	>
+		HIGH SCORES
+	</button>
+)}
+
 	<div
 		class={`hero-content relative z-10 flex flex-col items-center ${
 	theme.runner
