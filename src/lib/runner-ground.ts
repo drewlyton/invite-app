@@ -9,3 +9,25 @@
  * between the hero and the section is exactly where it would show.
  */
 export const GROUND_FILL_ALPHA = 0.22;
+
+/**
+ * Resolve the ground colour a theme actually paints with. `ground` is optional
+ * and falls back to `color`. The fallback lives here once because the canvas
+ * fill and the below-fold section tint must agree exactly, or the seam between
+ * hero and section shows as a colour step. The first overload keeps the common
+ * case — a theme with a definite `color` — a definite result.
+ */
+export function resolveGroundColor(
+	ground: string | undefined,
+	color: string,
+): string;
+export function resolveGroundColor(
+	ground: string | undefined,
+	color: string | undefined,
+): string | undefined;
+export function resolveGroundColor(
+	ground: string | undefined,
+	color: string | undefined,
+): string | undefined {
+	return ground ?? color;
+}

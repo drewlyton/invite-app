@@ -550,7 +550,7 @@ the idle prompt and rewritten in sequence by the island:
 | Phase | Text |
 | --- | --- |
 | idle | `Click / Space / Tap to Play` |
-| running | `HI 00000  00012` (live high score and score) |
+| running | `HI 00000   00012` (live high score and score) |
 | dead | `Game over — press space to retry` |
 
 It lives in the hero content rather than the canvas band, because that is where
@@ -992,7 +992,8 @@ hero):
 - [ ] After a game-over dialog closes, focus is on the band and `Space` retries; after
       a `HIGH SCORES` open, focus is back on the button.
 - [ ] No score is shown before the first play; it appears in the status line when
-      a run starts and remains through the game-over state.
+      a run starts, shows the live score while running, and is replaced by the
+      game-over message once the run ends.
 - [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
       still distinguishable against it.
 - [ ] The raised ground does not make the playfield feel cramped above the line.

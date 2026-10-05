@@ -8,9 +8,8 @@ import {
 	step,
 	view,
 } from "../lib/runner";
-import { GROUND_FILL_ALPHA } from "../lib/runner-ground";
-import { DEAD_STATUS } from "../lib/runner-status";
-import { formatScore } from "../lib/score-format";
+import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
+import { DEAD_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
 
@@ -51,7 +50,7 @@ export default function RunnerGame({
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const [interactive, setInteractive] = useState(false);
 	const hintId = useId();
-	const groundColor = ground ?? color;
+	const groundColor = resolveGroundColor(ground, color);
 
 	const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 	const [board, setBoard] = useState<BoardState>({ status: "loading" });
@@ -227,10 +226,6 @@ export default function RunnerGame({
 			statusEl.textContent = text;
 			lastStatus = text;
 		};
-		const runningStatus = (): string => {
-			const s = view(game);
-			return `HI ${formatScore(s.highScore)}   ${formatScore(s.score)}`;
-		};
 		// The hero carries a single `data-phase` attribute ("idle" | "running" |
 		// "dead"). Its only CSS consumer is `.hero-sky-strip` in Invite.astro, which
 		// promotes the strips to compositor layers while `running`. The other values
@@ -371,7 +366,7 @@ export default function RunnerGame({
 			const state = view(game);
 			if (state.phase === "running") {
 				advanceParallax(state.groundOffset, state.pixelScale);
-				writeStatus(runningStatus());
+				writeStatus(runningStatus(state.highScore, state.score));
 			} else {
 				// Hold the offset when the run ends. Syncing the baseline means a
 				// restart (which zeroes groundOffset) cannot produce a jump.
@@ -428,24 +423,26 @@ export default function RunnerGame({
 
 		// One button: start when idle, jump when running, restart when dead.
 		const press = (): void => {
-			const current = view(game).phase;
-			if (current === "dead") {
+			const s = view(game);
+			if (s.phase === "dead") {
 				// Snapshot the best the new run must beat, before `restart` resets the
 				// run. At death `highScore` is already max(old best, just-finished score).
-				runBestRef.current = view(game).highScore;
+				runBestRef.current = s.highScore;
 				game = restart(game);
 				resyncParallax();
+				// Re-read the restarted game: it has a new score (0) and the same best.
+				const next = view(game);
 				setPhaseAttr("running");
-				writeStatus(runningStatus());
+				writeStatus(runningStatus(next.highScore, next.score));
 				startLoop();
 				return;
 			}
-			if (current === "idle") {
-				runBestRef.current = view(game).highScore;
+			if (s.phase === "idle") {
+				runBestRef.current = s.highScore;
 				game = start(game);
 			}
 			setPhaseAttr("running");
-			writeStatus(runningStatus());
+			writeStatus(runningStatus(s.highScore, s.score));
 			pointerJump = true;
 			startLoop();
 		};

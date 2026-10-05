@@ -1,6 +1,6 @@
 ---
 import type { CollectionEntry } from "astro:content";
-import { GROUND_FILL_ALPHA } from "../lib/runner-ground";
+import { GROUND_FILL_ALPHA, resolveGroundColor } from "../lib/runner-ground";
 import { DEAD_STATUS, IDLE_STATUS } from "../lib/runner-status";
 import type { Theme } from "../lib/themes";
 import EventDetails from "./EventDetails.astro";
@@ -71,12 +71,12 @@ const CLOUD_PARALLAX_RATE = "0.30";
 
 // When the details move below the fold, that section has to carry the game
 // ground's tint itself so it reads as the ground continuing past the hero's
-// bottom edge. The canvas paints `theme.runner.ground ?? theme.runner.color` at
+// bottom edge. The canvas paints `resolveGroundColor(ground, color)` at
 // `GROUND_FILL_ALPHA` over the hero; `color-mix` paints the same colour at the
 // same alpha over the page, which matches the rendered result without a
 // full-opacity slab. Themes without a runner get no tint.
 const groundColor = theme.runner
-	? (theme.runner.ground ?? theme.runner.color)
+	? resolveGroundColor(theme.runner.ground, theme.runner.color)
 	: null;
 const detailsGroundStyle = groundColor
 	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent);`
@@ -213,12 +213,19 @@ const detailsGroundStyle = groundColor
 		   re-renders React. The invisible span is a spacer holding the tallest
 		   message: without it the slot would resize when the state changes, and on
 		   a narrow phone the idle prompt could wrap without the slot accounting
-		   for it. `motion-reduce:hidden` because play is not offered there. */}
+		   for it. `motion-reduce:hidden` because play is not offered there.
+		   `whitespace-pre-wrap` keeps the running message's three spaces between
+		   the two score columns, so the arcade columns stay aligned, while still
+		   letting the idle and game-over messages wrap. */}
 		{theme.runner && (
-		<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
-			<span aria-hidden="true" class="invisible col-start-1 row-start-1">{DEAD_STATUS}</span>
-			<p data-runner-status class="col-start-1 row-start-1">{IDLE_STATUS}</p>
-		</div>
+	<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
+		<span aria-hidden="true" class="invisible col-start-1 row-start-1">
+			{DEAD_STATUS}
+		</span>
+		<p data-runner-status class="col-start-1 row-start-1 whitespace-pre-wrap">
+			{IDLE_STATUS}
+		</p>
+	</div>
 )}
 
 		{!theme.detailsBelowFold && (
