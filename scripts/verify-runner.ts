@@ -401,7 +401,8 @@ function resizeTest(): Assertion {
  * it gets its own assertion: idle must bob in place without advancing the
  * world, a run must open on a static `push` and settle into `ride` after
  * `TUNING.pushDuration`, a grounded jump must animate crouch -> airborne ->
- * crouch and settle back into `ride`, and a collision must become `dead`.
+ * crouch and settle back into `ride`, and a collision must freeze the pose the
+ * character died on rather than switching to a crash sprite.
  */
 function poseTest(): Assertion {
 	const idle = createGame({ seed: 5, bandHeight: 190, canvasWidth: 640 });
@@ -464,14 +465,27 @@ function poseTest(): Assertion {
 	}
 	const ridesAfterLanding = view(settled).player.pose === "ride";
 
-	// Ride with no input until the first collision.
+	// Ride with no input until the first collision. The crash must then freeze
+	// the sprite: the pose and frame the character died on stay put across
+	// further dead steps, because there is no `dead` pose to switch to.
 	let dead = settled;
 	let deadSteps = 0;
 	while (view(dead).phase !== "dead" && deadSteps < 100000) {
 		dead = step(dead, DT, { jump: false });
 		deadSteps++;
 	}
-	const deadPose = view(dead).player.pose === "dead";
+	const deadPose = view(dead).player.pose;
+	const deadFrame = view(dead).player.frame;
+	let after = dead;
+	let frozen = true;
+	for (let i = 0; i < 60; i++) {
+		after = step(after, DT, { jump: false });
+		const frozenPlayer = view(after).player;
+		if (frozenPlayer.pose !== deadPose || frozenPlayer.frame !== deadFrame) {
+			frozen = false;
+		}
+	}
+	const deadFreezes = frozen && view(after).phase === "dead";
 
 	const pass =
 		idleAnimates &&
@@ -483,11 +497,11 @@ function poseTest(): Assertion {
 		sawAirFrame &&
 		landingCrouch &&
 		ridesAfterLanding &&
-		deadPose;
+		deadFreezes;
 	return {
-		name: "7. Pose model (idle bob, push -> ride, jump phases, dead)",
+		name: "7. Pose model (idle bob, push -> ride, jump phases, dead freeze)",
 		pass,
-		detail: `idle bobs (frame 0->1 after two maxDt-clamped steps, no distance/obstacles): ${idleAnimates}; start pose=push: ${startsPush}; push held frame 0 for ${pushSeconds.toFixed(4)}s vs pushDuration=${TUNING.pushDuration} (within one DT): ${pushDurationAccurate} and static: ${pushStayedFrame0}; settled to ride: ${settlesRide}; jump crouch->air->crouch: takeoff frame 0 ${jumpStartsCrouched}, air frame 1 ${sawAirFrame}, landing frame 2 ${landingCrouch}; back to ride after the crouch: ${ridesAfterLanding}; no-input collision -> dead: ${deadPose} after ${deadSteps} steps.`,
+		detail: `idle bobs (frame 0->1 after two maxDt-clamped steps, no distance/obstacles): ${idleAnimates}; start pose=push: ${startsPush}; push held frame 0 for ${pushSeconds.toFixed(4)}s vs pushDuration=${TUNING.pushDuration} (within one DT): ${pushDurationAccurate} and static: ${pushStayedFrame0}; settled to ride: ${settlesRide}; jump crouch->air->crouch: takeoff frame 0 ${jumpStartsCrouched}, air frame 1 ${sawAirFrame}, landing frame 2 ${landingCrouch}; back to ride after the crouch: ${ridesAfterLanding}; no-input collision freezes ${deadPose}[${deadFrame}] for 60 further steps: ${deadFreezes} (collision after ${deadSteps} steps).`,
 	};
 }
 

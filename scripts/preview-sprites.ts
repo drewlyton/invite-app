@@ -24,7 +24,7 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const POSES: readonly Pose[] = ["idle", "push", "ride", "jump", "dead"];
+const POSES: readonly Pose[] = ["idle", "push", "ride", "jump"];
 const ROW_H = 150;
 const GAP = 18;
 const PAD = 16;

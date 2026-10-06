@@ -26,13 +26,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 type Assertion = { name: string; pass: boolean; detail: string };
 
-const POSES: readonly Pose[] = ["idle", "push", "ride", "jump", "dead"];
+const POSES: readonly Pose[] = ["idle", "push", "ride", "jump"];
 const EXPECTED_FRAMES: Record<Pose, number> = {
 	idle: 2,
 	push: 1,
 	ride: 1,
 	jump: 3,
-	dead: 1,
 };
 
 // --- 1. pose + frame inventory ---------------------------------------------

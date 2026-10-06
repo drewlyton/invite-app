@@ -21,7 +21,11 @@ import {
 	groundTextureCssUrl,
 	resolveGroundColor,
 } from "../lib/runner-ground";
-import { drawPlayerFrame, PLAYER_FRAMES } from "../lib/runner-sprites";
+import {
+	drawPlayerFrame,
+	PLAYER_DEAD_ALPHA,
+	PLAYER_FRAMES,
+} from "../lib/runner-sprites";
 import { deadStatus, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
@@ -444,12 +448,15 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			// into the 16x22 world box. Images load asynchronously, so a frame is
 			// skipped until its image is decoded; the rAF loop keeps running, so the
 			// next frame picks it up. Smoothing is on (set once below) because the
-			// source is much larger than the box.
+			// source is much larger than the box. A crash keeps the frozen pose
+			// (`runner.ts` stops recomputing it) and only fades it here.
 			const poseFrames = PLAYER_FRAMES[s.player.pose];
 			const image =
 				playerImages[s.player.pose]?.[s.player.frame % poseFrames.length];
 			if (image?.complete && image.naturalWidth > 0) {
+				ctx.globalAlpha = s.phase === "dead" ? PLAYER_DEAD_ALPHA : 1;
 				drawPlayerFrame(ctx, image, s.player.x, s.player.y, px);
+				ctx.globalAlpha = 1;
 			}
 		};
 

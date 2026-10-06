@@ -64,7 +64,7 @@ type Game = {
   // distance, spawn timer, seeded rng
 };
 
-type Pose = "idle" | "push" | "ride" | "jump" | "dead"; // no duck pose
+type Pose = "idle" | "push" | "ride" | "jump"; // no duck pose, no dead pose
 
 type ObstacleKind =
   | "ground-narrow" | "ground-wide" | "ground-cluster"
@@ -494,7 +494,7 @@ and opaque pixels (i.e. the background really was removed).
 
 ### Animation flow
 
-The run reads idle → push → ride → jump → ride, with dead on a collision:
+The run reads idle → push → ride → jump → ride, and a collision ends it:
 
 | Pose | Frames | Role | Used for |
 | --- | --- | --- | --- |
@@ -502,16 +502,21 @@ The run reads idle → push → ride → jump → ride, with dead on a collision
 | `push` | 1 | `crouch` | holds for `TUNING.pushDuration` (a few seconds) at the start of a run |
 | `ride` | 1 | `ride-stand` | the static, both-feet-on-the-board pose for the rest of the run |
 | `jump` | 3 | `crouch`, `air`, `crouch` | takeoff crouch, airborne, landing crouch |
-| `dead` | 1 | `hold-front` | run over; the board held in front of the character |
 
-`push`, `ride` and `dead` are static single frames. `jump` is the only
-phase-driven pose: `runner.ts` picks frame 0 while the takeoff crouch
+`push` and `ride` are static single frames. `jump` is the only phase-driven
+pose: `runner.ts` picks frame 0 while the takeoff crouch
 (`TUNING.jumpCrouchDuration`) is running, frame 1 once airborne, and frame 2 for
 the landing crouch (`TUNING.landCrouchDuration`) after touchdown, then the run
 settles back into `ride`. The crouch role is shared by `push` and `jump`, so it
-is cut once and the manifest reuses the URL. The sheet's board-leaning pose (2)
-and tilted carve (7) are unused, and the sheet has **no crash art**, so `dead`
-uses the board-held-in-front pose.
+is cut once and the manifest reuses the URL. The sheet's board-leaning pose (2),
+board-held-in-front pose (3) and tilted carve (7) are unused.
+
+**There is no `dead` pose, and no crash sprite is needed.** A collision freezes
+the pose and frame the character died on — `stepPlayer` stops recomputing them
+once `phase` is `dead` — and the renderer draws that frozen frame at
+`PLAYER_DEAD_ALPHA` (0.5), so the crash reads as a still, faded frame rather than
+a pose switch. The physics above the freeze still runs, so a player caught
+mid-jump falls to the ground instead of hanging in the air.
 
 Obstacle art (the ground/flying kinds) is still unbuilt and drawn as rectangles;
 the ground texture and dashes are the shared `GROUND_TEXTURE` list.
@@ -1053,7 +1058,8 @@ manifest, blit path and verification scripts are complete, and the frames are
 generated from `src/assets/runner/skateboard-sheet.jpg` by
 `scripts/build-sprites.ts`. Re-run the generator after changing the sheet; the
 generated block is marked and must not be hand-edited. The sheet has no crash
-art, so `dead` uses the board-held-in-front pose (see [Sprites](#sprites)).
+art, so a crash freezes and fades the current frame instead (see
+[Sprites](#sprites)).
 - Obstacle art is also placeholder rectangles.
 
 ## Verification

@@ -6,7 +6,9 @@
  * art is not downsampled — and scaled into the player's 16x22 world box at blit
  * time by `drawPlayerFrame`. `PLAYER_FRAMES` maps each pose to its frame URLs in
  * play order; the simulation indexes it by `player.frame % frames.length`, so a
- * one-frame pose (jump, dead) holds frame 0.
+ * single-frame pose (`push`, `ride`) holds frame 0. There is no `dead` pose:
+ * a crash freezes whichever frame was showing and the renderer fades it with
+ * `PLAYER_DEAD_ALPHA`.
  *
  * The art comes from `src/assets/runner/skateboard-sheet.jpg`, a generated
  * sprite sheet. `scripts/build-sprites.ts` cuts the frames out of it, removes
@@ -28,6 +30,14 @@ import type { Pose } from "./runner";
 export const PLAYER_SPRITE_WIDTH = 16;
 export const PLAYER_SPRITE_HEIGHT = 22;
 
+/**
+ * Opacity of a frozen frame after a crash. A crash keeps the pose the character
+ * died on — there is no separate crash sprite — and the renderer draws that
+ * frame at this alpha, so the freeze reads as "out" while the character stays
+ * legible against the ground.
+ */
+export const PLAYER_DEAD_ALPHA = 0.5;
+
 /** Anything `drawImage` accepts that reports its intrinsic pixel size. */
 export type SpriteImage = CanvasImageSource & {
 	readonly width: number;
@@ -48,7 +58,6 @@ export const PLAYER_FRAMES: Readonly<Record<Pose, readonly string[]>> = {
 		"/runner/player/air.png",
 		"/runner/player/crouch.png",
 	],
-	dead: ["/runner/player/hold-front.png"],
 };
 // --- generated:end ---
 

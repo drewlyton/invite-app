@@ -13,7 +13,12 @@
 
 export type Input = { jump: boolean };
 
-export type Pose = "idle" | "push" | "ride" | "jump" | "dead";
+/**
+ * The player's animation pose. There is deliberately no `dead` pose: a crash
+ * freezes whichever pose the character was showing and the renderer fades it
+ * (see `PLAYER_DEAD_ALPHA` in `runner-sprites.ts`).
+ */
+export type Pose = "idle" | "push" | "ride" | "jump";
 
 export type ObstacleKind =
 	| "ground-narrow"
@@ -598,15 +603,28 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 	// Only a run advances the run clock; a dead player's clock stops with it.
 	const runTime = running ? p.runTime + dt : p.runTime;
 
-	// Pose order matters: death beats everything, then the run phases. The
-	// landing crouch holds `jump` briefly after touchdown, so a jump reads as
-	// crouch -> airborne -> crouch instead of snapping straight back to ride.
-	let pose: Pose;
+	// A crash freezes the sprite on the pose it was showing, so once dead nothing
+	// below recomputes `pose` or `frame`; the renderer fades the frozen frame.
+	// The physics above still ran, so a player caught mid-jump falls to the ground
+	// rather than hanging in the air.
 	if (g.phase === "dead") {
-		pose = "dead";
-	} else if (!running) {
-		pose = "idle";
-	} else if (airborne) {
+		return {
+			...p,
+			y,
+			vy,
+			airborne,
+			airTime,
+			landTime,
+			runTime,
+			jumpHeld: input.jump,
+		};
+	}
+
+	// Pose order matters: the landing crouch holds `jump` briefly after
+	// touchdown, so a jump reads as crouch -> airborne -> crouch instead of
+	// snapping straight back to ride.
+	let pose: Pose;
+	if (airborne) {
 		pose = "jump";
 	} else if (landTime < g.tuning.landCrouchDuration) {
 		pose = "jump";
@@ -616,18 +634,16 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		pose = "ride";
 	}
 
-	// Frame selection is per pose. Only `idle` is a timed cycle (its two-frame
-	// bob); `jump` picks by phase — 0 is the takeoff crouch, 1 the airborne
-	// frame, 2 the landing crouch — and push/ride/dead hold frame 0.
-	let frame = 0;
-	let frameTime = 0;
-	if (pose === "idle") {
-		const animated = advanceFrame(p.frame, p.frameTime, dt, 2);
-		frame = animated.frame;
-		frameTime = animated.frameTime;
-	} else if (pose === "jump") {
-		frame = airborne ? (airTime < g.tuning.jumpCrouchDuration ? 0 : 1) : 2;
-	}
+	// Only `jump` picks a frame other than 0: 0 is the takeoff crouch, 1 the
+	// airborne frame, 2 the landing crouch. Push and ride are single frames.
+	const frame =
+		pose === "jump"
+			? airborne
+				? airTime < g.tuning.jumpCrouchDuration
+					? 0
+					: 1
+				: 2
+			: 0;
 
 	return {
 		x: g.playerX,
@@ -636,7 +652,7 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		airborne,
 		pose,
 		frame,
-		frameTime,
+		frameTime: 0,
 		airTime,
 		landTime,
 		runTime,
@@ -736,8 +752,9 @@ export function step(game: Game, dt: number, input: Input): Game {
 		if (hits) {
 			phase = "dead";
 			highScore = Math.max(highScore, score);
-			player.pose = "dead";
-			player.frame = 0;
+			// The sprite is left exactly as `stepPlayer` computed it for this step:
+			// a crash freezes the pose and frame the character died on, and the
+			// renderer fades that frozen frame (there is no `dead` pose).
 		}
 	}
 

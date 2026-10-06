@@ -24,8 +24,8 @@
  * `ROLE_FRAMES` names the sheet frames the game uses and `POSE_FRAMES` maps
  * each pose to them. A role can serve more than one pose — the crouch is both
  * the push pose and the jump's takeoff/landing frame — so each role is written
- * once and the manifest reuses its URL. The sheet has no crash art, so the
- * board-held-in-front pose stands in for `dead`.
+ * once and the manifest reuses its URL. There is no `dead` pose: a crash freezes
+ * whichever pose was showing, so the sheet's crash-less frames are enough.
  *
  * Re-run after editing the sheet; the module's helpers and docs are untouched.
  */
@@ -50,12 +50,12 @@ const EXPECTED_FRAMES = 8;
 
 /**
  * Sheet frame index -> the role it plays. Frames not listed are unused: the
- * board-leaning pose (2) and the tilted carve (7).
+ * board-leaning pose (2), the board-held-in-front pose (3) and the tilted carve
+ * (7).
  */
 const ROLE_FRAMES: Readonly<Record<string, number>> = {
 	"idle-0": 0,
 	"idle-1": 1,
-	"hold-front": 3,
 	crouch: 4,
 	air: 5,
 	"ride-stand": 6,
@@ -64,14 +64,13 @@ const ROLE_FRAMES: Readonly<Record<string, number>> = {
 /**
  * Pose -> roles, in play order. `jump` is a three-frame animation: crouch on
  * takeoff, airborne, crouch on landing; the engine picks the frame by phase, so
- * the crouch role appears twice. `push`, `ride` and `dead` are single frames.
+ * the crouch role appears twice. `push` and `ride` are single frames.
  */
 const POSE_FRAMES: Readonly<Record<string, readonly string[]>> = {
 	idle: ["idle-0", "idle-1"],
 	push: ["crouch"],
 	ride: ["ride-stand"],
 	jump: ["crouch", "air", "crouch"],
-	dead: ["hold-front"],
 };
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
