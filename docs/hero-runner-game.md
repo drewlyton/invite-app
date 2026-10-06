@@ -41,7 +41,9 @@ aesthetic stays consistent with `public/clouds/*.svg`.
 
 ```
 src/lib/runner.ts              pure simulation — physics, spawns, collision, scoring
-src/lib/runner-sprites.ts      sprite bitmaps + blit helper
+src/lib/runner-sprites.ts      sprite bitmaps + blit helper (data block is generated)
+scripts/build-sprites.ts       cuts the sheet into frames and regenerates that block
+src/assets/runner/             source sheet + cut, transparent frame PNGs
 src/components/RunnerGame.tsx  React island — canvas, clock, input, lifecycle
 src/lib/themes.ts              add `runner` to the Theme type
 src/components/Invite.astro    render <RunnerGame client:load /> when theme.runner
@@ -408,9 +410,8 @@ than hard.
   `rect()`-per-pixel / `fill()` per distinct colour, skipping transparent cells.
   It takes `s.player.x`, `s.player.y` and `pixelScale` unchanged, so the sprite
   maps 1:1 onto the 16×22 player box with no anchoring maths in the renderer.
-  The palette is a three-step greyscale ramp; the bitmaps are currently
-  placeholders (see [Sprites](#sprites)). Obstacles are still one `fillRect`
-  each.
+  The palette is a five-step stone ramp and the bitmaps are cut from the sprite
+  sheet (see [Sprites](#sprites)). Obstacles are still one `fillRect` each.
 - **The score lives in the hero's status line, not on the canvas.** The island
   finds `[data-runner-status]` once and rewrites its `textContent` from the rAF
   loop, and only when the formatted string changes. The old canvas HUD block is
@@ -468,18 +469,32 @@ export const PLAYER_SPRITES: Readonly<Record<Pose, readonly Bitmap[]>>;
 export function drawBitmap(ctx, bitmap, palette, x, y, px): void;   // batched blit
 ```
 
-The palette is **a three-step greyscale ramp of colours the page already uses**
-(`o` = hero ink, `m` = ground tone, `l` = runner/cloud tone), so the finished
-sprite belongs to the monochrome `game-night-light` hero rather than introducing a
-new colour system. Add a key to `PLAYER_PALETTE` if the art needs a fourth step;
-the theme colour still drives the ground and the obstacle rectangles.
+The palette is **a five-step stone ramp of colours the page already uses**
+(`o` darkest through `l` lightest: `#1c1917`, `#44403c`, `#78716c`, `#a8a29e`,
+`#d6d3d1`), so the finished sprite belongs to the monochrome
+`game-night-light` hero rather than introducing a new colour system. The sheet
+is a single warm greyscale figure, so the keys name ramp positions rather than
+body parts. The theme colour still drives the ground and the obstacle
+rectangles.
 
-**The pose graph is implemented and wired end to end; the bitmaps are
-placeholders.** Every pose currently draws the same neutral box (`placeholder()`
-in `runner-sprites.ts`), which keeps the blit path, the component and the two
-verification scripts honest while the character art is redrawn. The frame counts
-below are part of the contract and are asserted by `scripts/verify-sprites.ts`;
-only the pixels are pending.
+**The pose graph is implemented and wired end to end, and the bitmaps are real
+art cut from the sheet.** `scripts/build-sprites.ts` loads
+`src/assets/runner/skateboard-sheet.jpg`, removes the sheet's light-grey
+background with a flood fill seeded from the image border (so light pixels
+*inside* the character survive), finds the six frames by geometry, writes each
+as a trimmed transparent PNG to `src/assets/runner/frames/`, then downsamples
+every frame to the 16×22 box, quantises it onto `PLAYER_PALETTE` and splices the
+resulting literals into the marked block in `runner-sprites.ts`. The frame
+counts below are part of the contract and are asserted by
+`scripts/verify-sprites.ts`.
+
+The sheet supplies the two idle frames, one push frame, the jump and the two
+ride frames, but **not** `push[1]` or `dead[0]`. The generator derives `push[1]`
+by sagging the rider's upper body one row with the board planted — a one-row bob
+in the same spirit as the idle pair — and carries a hand-authored `dead[0]`
+(seated, light lenses, board upright) because the sheet has no crash art. Both
+live in `scripts/build-sprites.ts`; replace them there if the sheet ever gains
+the real frames.
 
 | Pose | Frames | Used for |
 | --- | --- | --- |
@@ -494,9 +509,11 @@ the ground texture and dashes are the shared `GROUND_TEXTURE` list.
 
 `drawBitmap` groups the bitmap's cells by colour and emits **one batched path per
 colour** (`beginPath()` / `rect()` per cell / `fill()`), so the whole character
-costs a handful of rasterisations rather than one per pixel. Do not copy the
-original game's sprite assets; hand-authored bitmaps keep the art original and
-reviewable in a diff.
+costs a handful of rasterisations rather than one per pixel. The sheet is
+original generated art, not copied from the original game. Keeping the source
+sheet, the cut frame PNGs and the generated bitmaps together in the repo means a
+character change is reviewable as a diff — or reproducible by re-running the
+generator.
 
 ## Interaction and input
 
@@ -936,12 +953,11 @@ event, which is acceptable because `game-night-light` is this event's theme.
    loop, pause handling.
 3. Wire `theme.runner`, `Invite.astro`, and the `data-hero` attribute; delete the
    bottom cloud layer and its dead CSS.
-4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`. **Infrastructure
-   done, art pending** — the five player poses, the greyscale palette and the
-   blit path are wired through `runner.ts`'s pose union and `RunnerGame.tsx`'s
-   `drawBitmap` call, and the frame counts are asserted. The bitmaps themselves
-   are still placeholders and need a real character. Obstacle art also remains
-   placeholder rectangles.
+4. Swap placeholder rects for real bitmaps in `runner-sprites.ts`. **Done for the
+   player** — the five poses are cut from `src/assets/runner/skateboard-sheet.jpg`
+   by `scripts/build-sprites.ts`, wired through `runner.ts`'s pose union and
+   `RunnerGame.tsx`'s `drawBitmap` call, with the frame counts asserted. Obstacle
+   art still remains placeholder rectangles.
 5. Focusable region, offscreen instructions, reduced-motion branch, contrast pass.
 6. Optional: score-30 confetti milestone.
 7. `npm run lint` and a `astro build`.
@@ -1012,16 +1028,18 @@ mirrors. The spawner must recompute airtime from the *active* tuning rather than
 the module default, or per-run overrides would silently break the gap guarantee.
 - Duck is gone as of tuning round 1; the implementation follows the jump-only
 input model specified above.
-- **The player sprite carries its own greyscale palette** in `runner-sprites.ts`
+- **The player sprite carries its own stone palette** in `runner-sprites.ts`
 rather than a single `theme.runner.color` tint. The original sketch assumed one
 recolourable bitmap per theme; a character with a face cannot come from a single
-tint without turning into a silhouette. The palette is three neutrals the page
-already uses, and the theme colour still drives the ground and the obstacle
-rectangles.
-- **The player bitmaps are placeholders.** The pose graph, frame counts, palette,
-blit path and verification scripts are complete, but every pose currently draws
-the same neutral box. Replacing `PLACEHOLDER` in `runner-sprites.ts` is the
-remaining art step; nothing else should need to change.
+tint without turning into a silhouette. The palette is the five-step stone ramp
+the page already uses, and the theme colour still drives the ground and the
+obstacle rectangles.
+- **The player bitmaps come from the sprite sheet.** The pose graph, frame counts,
+palette, blit path and verification scripts are complete, and the bitmaps are
+generated from `src/assets/runner/skateboard-sheet.jpg` by
+`scripts/build-sprites.ts`. Re-run the generator after changing the sheet; the
+generated block is marked and must not be hand-edited. `push[1]` and `dead[0]`
+are derived in the generator (see [Sprites](#sprites)).
 - Obstacle art is also placeholder rectangles.
 
 ## Verification
