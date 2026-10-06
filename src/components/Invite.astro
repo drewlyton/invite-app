@@ -7,6 +7,7 @@ import {
 	GROUND_TEXTURE_TILE_WIDTH,
 	groundTextureCssUrl,
 	resolveGroundColor,
+	resolveGroundFarColor,
 } from "../lib/runner-ground";
 import { deadStatus, IDLE_STATUS } from "../lib/runner-status";
 import { MAX_SCORE } from "../lib/scores";
@@ -78,22 +79,75 @@ const starLayers: StarLayer[] = [
 
 const CLOUD_PARALLAX_RATE = "0.30";
 
+// The moon's centre, as a CSS position on the hero. Shared by the disc and the
+// glow that lights the corner around it, so the light can never drift off its
+// source: the disc is placed with `left`/`top` at these and the radial gradient
+// is centred on the same pair. `--moon-y` carries a floor alongside its
+// percentage because the percentage alone is not enough: on a short viewport 16%
+// is high enough to put the disc behind the HIGH SCORES button, which is opaque
+// and would clip its top. 7rem clears the button's own `top-6` + 44px minimum
+// height and half a 76px disc at the largest size it reaches.
+const MOON_X = "92%";
+const MOON_Y = "max(7rem, 16%)";
+
+// The glow's radius. One length, used for the whole radial falloff: the moon's
+// light has to read as a lit corner rather than a tight halo, so it is keyed to
+// the viewport width (a corner is a fraction of the viewport, not a fixed number
+// of px) and clamped at both ends for phones and very wide displays. Note the
+// ceiling this works against — `heroBg` is a light stone, so the brightest the
+// wash can be is white, and the whole effect lives in the ~24/255 between them.
+// Covering a large area is what makes it read; the stops below hold the
+// brightness out to roughly half the radius rather than falling off at once.
+const MOON_GLOW_RADIUS = "clamp(240px, 58vw, 820px)";
+
 // When the details move below the fold, that section has to carry the game
 // ground's tint itself so it reads as the ground continuing past the hero's
-// bottom edge. The canvas paints `resolveGroundColor(ground, color)` at
-// `GROUND_FILL_ALPHA` over the hero; `color-mix` paints the same colour at the
-// same alpha over the page, which matches the rendered result without a
-// full-opacity slab. `groundTextureCssUrl` rebuilds the same `GROUND_TEXTURE`
-// dirt dashes the canvas blits as a repeating SVG background, so the section
-// also reads as 8-bit stratified soil rather than flat tint. One list feeds
-// both renderers, so they cannot drift. Themes without a runner get no tint and
-// no texture. `background-size` scales one tile to CSS px using the 2 px-per-unit
-// stand-in the canvas's live `pixelScale` cannot be reproduced with here.
+// bottom edge. The section is painted in the *far* end of the ground's gradient
+// (`resolveGroundFarColor`), not the near ink the canvas draws at the player's
+// feet: the canvas fades from the near ink at the ground line to the far ink at
+// the hero's bottom edge, so the far ink is the colour the section has to
+// continue from, and it is also the lighter of the two, which is what gives the
+// details text its contrast. `color-mix` paints that colour at
+// `GROUND_FILL_ALPHA` over the hero background, which is what the canvas does
+// with the gradient's last stop, so the boundary is a colour match rather than
+// a step. The mix base must be that hero background and never `transparent`:
+// mixing over `transparent` composites over the *page*, which would reintroduce
+// the very step this avoids. `groundTextureCssUrl` rebuilds the same
+// `GROUND_TEXTURE` dirt dashes the canvas blits as a repeating SVG background,
+// so the section also reads as 8-bit stratified soil rather than flat tint —
+// and it is rebuilt from the *near* ink, not the far one, because the texture
+// has to read as grain against the light section and the far ink is within a
+// few units of the fill it would sit on. One list feeds both renderers, so they
+// cannot drift. Themes without a runner get no tint and no texture.
+// `background-size` scales one tile to CSS px using the 2 px-per-unit stand-in
+// the canvas's live `pixelScale` cannot be reproduced with here.
+//
+// The grain is painted by its own absolutely-positioned layer rather than as a
+// second `background-image` on the section, and that layer is the reason the
+// two styles below are two constants instead of one: see `.details-ground-grain`
+// in the stylesheet. The section itself carries the fill only.
+//
+// `heroBgBase` is the colour the hero actually paints behind the canvas. The
+// one theme whose `heroBg` is `transparent` shows the page through instead, so
+// it falls back to white rather than emitting a `color-mix(..., transparent)`
+// that would drop the base and reintroduce the seam. The expression is the same
+// one `src/pages/og/[eventId].png.ts` uses, but not for the same reason: that
+// route needs an opaque colour to rasterise, whereas here the tint just needs a
+// concrete base to mix into.
+const heroBgBase = theme.heroBg === "transparent" ? "#ffffff" : theme.heroBg;
 const groundColor = theme.runner
 	? resolveGroundColor(theme.runner.ground, theme.runner.color)
 	: null;
-const detailsGroundStyle = groundColor
-	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent); background-image: ${groundTextureCssUrl(groundColor)}; background-size: ${GROUND_TEXTURE_TILE_WIDTH * GROUND_TEXTURE_CSS_SCALE}px ${GROUND_TEXTURE_TILE_HEIGHT * GROUND_TEXTURE_CSS_SCALE}px;`
+const groundFarColor =
+	groundColor && theme.runner
+		? resolveGroundFarColor(theme.runner.groundFar, groundColor)
+		: null;
+const groundFillStyle =
+	groundColor && groundFarColor
+		? `background-color: color-mix(in srgb, ${groundFarColor} calc(${GROUND_FILL_ALPHA} * 100%), ${heroBgBase});`
+		: "";
+const groundGrainStyle = groundColor
+	? `background-image: ${groundTextureCssUrl(groundColor)}; background-size: ${GROUND_TEXTURE_TILE_WIDTH * GROUND_TEXTURE_CSS_SCALE}px ${GROUND_TEXTURE_TILE_HEIGHT * GROUND_TEXTURE_CSS_SCALE}px;`
 	: "";
 ---
 
@@ -102,6 +156,24 @@ const detailsGroundStyle = groundColor
 	style={heroStyle}
 	data-hero
 >
+	{theme.moon && (
+	/* The light first, then its source, and both before the star and cloud layers:
+	   the glow is part of the sky, so it has to paint *behind* the specks and the
+	   clouds instead of washing them out, and the moon disc is therefore also
+	   behind the clouds that drift across it. Neither layer carries
+	   `data-parallax`, unlike every other sky layer: the moon is the one thing up
+	   there that does not move with the player, and a corner-pinned disc run
+	   through the parallax transform would slide out of its own corner. */
+	<div
+		class="pointer-events-none absolute inset-0 z-0"
+		style={`--moon-x: ${MOON_X}; --moon-y: ${MOON_Y}; --moon-glow: ${theme.moon.glow}; --moon-radius: ${MOON_GLOW_RADIUS};`}
+		aria-hidden="true"
+	>
+		<div class="hero-moonlight absolute inset-0"></div>
+		<img src="/moon/moon.svg" alt="" class="hero-moon absolute" />
+	</div>
+)}
+
 	{theme.stars &&
 	starLayers.map((layer) => (
 		<div
@@ -239,9 +311,13 @@ const detailsGroundStyle = groundColor
 		   `whitespace-pre-wrap` on the visible line keeps the running message's
 		   three spaces between the two score columns — so the arcade columns stay
 		   aligned — and renders the dead message's newline, while still letting the
-		   idle and game-over messages wrap. */}
+		   idle and game-over messages wrap.
+
+		   `text-stone-600` is picked against the hero background behind it
+		   — the sky here, not the ground band below — so it must be re-checked
+		   (re-picked to keep ≥ 4.5:1 at `text-sm`) whenever `heroBg` moves. */}
 		{theme.runner && (
-	<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-500 uppercase motion-reduce:hidden">
+	<div class="mt-4 grid place-items-center font-body text-sm tracking-widest text-stone-600 uppercase motion-reduce:hidden">
 		<span
 			aria-hidden="true"
 			class="invisible col-start-1 row-start-1 whitespace-pre-wrap"
@@ -270,6 +346,7 @@ const detailsGroundStyle = groundColor
 		eventId={event.id}
 		color={theme.runner.color}
 		ground={theme.runner.ground}
+		groundFar={theme.runner.groundFar}
 	/>
 )}
 	{/* When the runner theme moves its details below the fold, the "RSVP by …"
@@ -304,17 +381,30 @@ const detailsGroundStyle = groundColor
 {theme.detailsBelowFold && (
 	<section
 		class="relative px-6 pt-10 pb-10 text-center sm:pt-14 sm:pb-14"
-		style={detailsGroundStyle}
+		style={groundFillStyle}
 	>
-		<EventDetails
-			date={date}
-			time={time}
-			location={location}
-			rsvpBy={rsvp_by}
-			theme={theme}
-			divider={false}
-			showRsvp={!theme.runner}
-		/>
+		{/* The grain layer, before the content so the content can paint over it: a
+		   positioned element paints above static content in the same stacking
+		   context, which is why the details below sit in their own `relative`
+		   wrapper. Decorative, so it is hidden from assistive tech. */}
+		{theme.runner && (
+			<div
+				class="details-ground-grain pointer-events-none absolute inset-0"
+				style={groundGrainStyle}
+				aria-hidden="true"
+			/>
+		)}
+		<div class="relative">
+			<EventDetails
+				date={date}
+				time={time}
+				location={location}
+				rsvpBy={rsvp_by}
+				theme={theme}
+				divider={false}
+				showRsvp={!theme.runner}
+			/>
+		</div>
 	</section>
 )}
 
@@ -483,6 +573,55 @@ const detailsGroundStyle = groundColor
 		96vw 16vh currentColor,
 		22vw 94vh currentColor,
 		78vw 96vh currentColor;
+}
+
+/* The below-fold ground's grain. It paints on its own layer so that its opacity
+   can fade with depth without touching the ground fill — a mask on the section
+   itself would take the fill down with it. The fade is the point: the grain is
+   strongest where the band meets the hero, at the same alpha the canvas paints
+   its own dashes with, so the boundary stays continuous, and it dissolves
+   towards the bottom so the soil runs out where the ground does rather than
+   stopping at a hard edge above the RSVP section. It also means the lower the
+   details text sits, the less grain it has to read through. `mask-mode`
+   defaults to `match-source`, so a gradient masks by its alpha and the colour
+   below is arbitrary; the tile itself repeats and is sized from the inline
+   `background-size`, exactly as it was when this was a second background layer
+   on the section. */
+.details-ground-grain {
+	mask-image: linear-gradient(to bottom, #000, transparent);
+}
+
+/* Moonlight. One radial gradient, centred on the same `--moon-x`/`--moon-y`
+   pair the disc is placed with, falling from the theme's glow colour to
+   transparent. The stops are mixed towards `transparent` rather than written as
+   rgba() so the theme states the colour once. Its radius is a length rather than
+   a percentage: a corner of light is a fraction of the viewport's width, so letting
+   the default farthest-corner sizing decide it would make the falloff drift with
+   the aspect ratio. Painted behind the star and cloud layers (see the markup), so
+   the corner brightens *around* them instead of fading them out. */
+.hero-moonlight {
+	background-image: radial-gradient(
+		circle var(--moon-radius, 420px) at var(--moon-x, 90%) var(--moon-y, 15%),
+		color-mix(in srgb, var(--moon-glow, #ffffff) 95%, transparent) 0%,
+		color-mix(in srgb, var(--moon-glow, #ffffff) 60%, transparent) 18%,
+		color-mix(in srgb, var(--moon-glow, #ffffff) 28%, transparent) 42%,
+		color-mix(in srgb, var(--moon-glow, #ffffff) 8%, transparent) 70%,
+		color-mix(in srgb, var(--moon-glow, #ffffff) 0%, transparent) 100%
+	);
+}
+
+/* The disc itself: centred on the glow's origin, so the light always appears to
+   come from the moon. `pixelated` because it is 8-bit art on a 23-unit grid and
+   the other pixel art in the hero is drawn that way; the rim in the SVG is what
+   keeps it legible, since the glow drives the sky directly behind it to
+   near-white. */
+.hero-moon {
+	left: var(--moon-x);
+	top: var(--moon-y);
+	width: clamp(48px, 6vw, 76px);
+	height: auto;
+	transform: translate(-50%, -50%);
+	image-rendering: pixelated;
 }
 
 /* Sky parallax. Each layer is two nested elements: the outer element runs the

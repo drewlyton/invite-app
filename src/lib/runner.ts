@@ -125,7 +125,10 @@ export const TUNING = {
 	maxDt: 0.05,
 
 	// Animation.
-	// The idle bob's frame period.
+	// Frame period of the animated *art*. Only the obstacles' placeholder cycle
+	// reads it now: the player's poses are either single frames or the one-shot
+	// crouch transitions timed by the `*CrouchDuration` knobs below, and the idle
+	// pose is held still on its first frame.
 	frameDuration: 0.1,
 	// How long a run opens in the push pose before settling into the ride pose.
 	// Presentation only: it never touches physics, so it can be retuned without
@@ -675,26 +678,16 @@ export function step(game: Game, dt: number, input: Input): Game {
 	const stepDt = clamp(dt, 0, TUNING.maxDt);
 	if (stepDt === 0) return { ...g };
 	if (g.phase === "idle") {
-		// Idle is inert except for the player's own animation: the sprite bobs in
-		// place while the visitor reads the invite. No distance, no obstacles, no
-		// spawner — just the two-frame cycle, so the render loop can keep drawing
-		// the same scene. The input is deliberately ignored.
-		const animated = advanceFrame(
-			g.player.frame,
-			g.player.frameTime,
-			stepDt,
-			2,
-		);
-		const idleState: GameState = {
-			...g,
-			player: {
-				...g.player,
-				pose: "idle",
-				frame: animated.frame,
-				frameTime: animated.frameTime,
-			},
-		};
-		return idleState;
+		// Idle is completely inert: no distance, no obstacles, no spawner, no
+		// animation, and the input is deliberately ignored. The player holds the
+		// first frame of the `idle` pose, which is where `createGame` puts it and
+		// where nothing can move it from — only `createGame` produces an `idle`
+		// phase, and `start`/`restart` leave it for good. The two-frame bob this
+		// used to advance is deliberately gone: at the size the sprite renders, the
+		// alternate frame reads as a twitch rather than a breath, and a scene that
+		// is genuinely still is what the visitor is meant to see before they press.
+		// It is also what lets the island stop its render loop outright while idle.
+		return { ...g };
 	}
 
 	const speed = speedAtDistance(g.distance, g.tuning);

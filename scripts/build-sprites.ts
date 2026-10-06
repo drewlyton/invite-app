@@ -14,7 +14,7 @@
  *   2. finds the frames by geometry — sprite-height row bands, then the
  *      non-empty column runs inside each band — so no frame coordinates are
  *      hard-coded;
- *   3. writes each frame to `public/runner/player/<pose>-<n>.png` as a trimmed,
+ *   3. writes each role to `public/runner/player/<role>.png` as a trimmed,
  *      transparent PNG **at the sheet's own resolution**: the sprite art is not
  *      downsampled. The game draws these images into the player's 16x22 world
  *      box at blit time (`drawPlayerFrame` in `runner-sprites.ts`);
@@ -24,10 +24,20 @@
  * `ROLE_FRAMES` names the sheet frames the game uses and `POSE_FRAMES` maps
  * each pose to them. A role can serve more than one pose — the crouch is both
  * the push pose and the jump's takeoff/landing frame — so each role is written
- * once and the manifest reuses its URL. There is no `dead` pose: a crash freezes
- * whichever pose was showing, so the sheet's crash-less frames are enough.
+ * once and the manifest reuses its URL. The frames directory is wiped before
+ * writing, so what it contains is exactly the manifest and no more. There is no
+ * `dead` pose: a crash freezes whichever pose was showing, so the sheet's
+ * crash-less frames are enough.
  *
  * Re-run after editing the sheet; the module's helpers and docs are untouched.
+ *
+ * If the dev server was already running, restart it afterwards — touching
+ * `astro.config.mjs` is enough, since a config change restarts it. This script
+ * deletes and rebuilds `public/runner/player/`, and Vite serves `public/` from
+ * the file set it walked at startup: when it does not notice the rebuilt
+ * directory, every sprite 404s and the character silently disappears from the
+ * band. A restart re-scans it. Nothing in a built site has this problem, because
+ * a build copies `public/` again.
  */
 
 import fs from "node:fs";
@@ -50,12 +60,17 @@ const EXPECTED_FRAMES = 8;
 
 /**
  * Sheet frame index -> the role it plays. Frames not listed are unused: the
- * board-leaning pose (2), the board-held-in-front pose (3) and the tilted carve
- * (7).
+ * second idle frame (1), the board-leaning pose (2), the board-held-in-front
+ * pose (3) and the tilted carve (7).
+ *
+ * The second idle frame is deliberately unused. The idle pose is the scene the
+ * visitor looks at while they read the invite, and the two frames differ enough
+ * (about a third of the sprite's pixels) that alternating them at
+ * `TUNING.frameDuration` read as a twitch rather than a breath. The idle pose is
+ * therefore a single frame, held still; see `step` in `src/lib/runner.ts`.
  */
 const ROLE_FRAMES: Readonly<Record<string, number>> = {
 	"idle-0": 0,
-	"idle-1": 1,
 	crouch: 4,
 	air: 5,
 	"ride-stand": 6,
@@ -64,10 +79,10 @@ const ROLE_FRAMES: Readonly<Record<string, number>> = {
 /**
  * Pose -> roles, in play order. `jump` is a three-frame animation: crouch on
  * takeoff, airborne, crouch on landing; the engine picks the frame by phase, so
- * the crouch role appears twice. `push` and `ride` are single frames.
+ * the crouch role appears twice. `idle`, `push` and `ride` are single frames.
  */
 const POSE_FRAMES: Readonly<Record<string, readonly string[]>> = {
-	idle: ["idle-0", "idle-1"],
+	idle: ["idle-0"],
 	push: ["crouch"],
 	ride: ["ride-stand"],
 	jump: ["crouch", "air", "crouch"],

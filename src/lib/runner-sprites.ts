@@ -6,7 +6,10 @@
  * art is not downsampled — and scaled into the player's 16x22 world box at blit
  * time by `drawPlayerFrame`. `PLAYER_FRAMES` maps each pose to its frame URLs in
  * play order; the simulation indexes it by `player.frame % frames.length`, so a
- * single-frame pose (`push`, `ride`) holds frame 0. There is no `dead` pose:
+ * single-frame pose (`idle`, `push`, `ride`) holds frame 0. `idle` is one frame
+ * by design rather than by omission — it is the scene the visitor looks at while
+ * they read the invite, and alternating the sheet's two idle frames read as a
+ * twitch at the size the sprite renders. There is no `dead` pose:
  * a crash freezes whichever frame was showing and the renderer fades it with
  * `PLAYER_DEAD_ALPHA`.
  *
@@ -50,7 +53,7 @@ export type SpriteImage = CanvasImageSource & {
 // sheet or the generator and re-run it.
 
 export const PLAYER_FRAMES: Readonly<Record<Pose, readonly string[]>> = {
-	idle: ["/runner/player/idle-0.png", "/runner/player/idle-1.png"],
+	idle: ["/runner/player/idle-0.png"],
 	push: ["/runner/player/crouch.png"],
 	ride: ["/runner/player/ride-stand.png"],
 	jump: [

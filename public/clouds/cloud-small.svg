@@ -4,31 +4,41 @@
 	shape-rendering="crispEdges"
 	preserveAspectRatio="xMidYMid meet"
 >
+	<!--
+		The `game-night-light` hero's sky is stone-200 (#e7e5e4), so every tone
+		on this cloud is its old stone-900 / sky-200 / stone-700 value scaled by the
+		same factor the sky moved by (231/255 = 0.906), which is what keeps the
+		cloud sitting on the darker sky the way it sat on the white one. The scale
+		is not a contrast-preserving move — ink and paper scaled together cannot
+		hold a ratio, and the ink's own drops from 17.5:1 to 14.2:1 — it is a match
+		of the *shift* the sky made. The hexes are deliberately not Tailwind steps.
+		Re-derive them from the new `heroBg` if the sky moves again.
+	-->
 	<title>Pixel cloud</title>
-	<rect x="13" y="2" width="5" height="1" fill="#1c1917" />
-	<rect x="11" y="3" width="2" height="1" fill="#1c1917" />
-	<rect x="18" y="3" width="2" height="1" fill="#1c1917" />
-	<rect x="10" y="4" width="1" height="1" fill="#1c1917" />
-	<rect x="20" y="4" width="1" height="1" fill="#1c1917" />
-	<rect x="10" y="5" width="1" height="1" fill="#1c1917" />
-	<rect x="20" y="5" width="4" height="1" fill="#1c1917" />
-	<rect x="10" y="6" width="1" height="1" fill="#1c1917" />
-	<rect x="21" y="6" width="4" height="1" fill="#1c1917" />
-	<rect x="8" y="7" width="3" height="1" fill="#1c1917" />
-	<rect x="12" y="7" width="1" height="1" fill="#1c1917" />
-	<rect x="25" y="7" width="1" height="1" fill="#1c1917" />
-	<rect x="7" y="8" width="1" height="1" fill="#1c1917" />
-	<rect x="11" y="8" width="1" height="1" fill="#1c1917" />
-	<rect x="24" y="8" width="1" height="1" fill="#1c1917" />
-	<rect x="6" y="9" width="1" height="1" fill="#1c1917" />
-	<rect x="11" y="9" width="1" height="1" fill="#bae6fd" />
-	<rect x="21" y="9" width="2" height="1" fill="#bae6fd" />
-	<rect x="25" y="9" width="1" height="1" fill="#1c1917" />
-	<rect x="5" y="10" width="1" height="1" fill="#1c1917" />
-	<rect x="12" y="10" width="1" height="1" fill="#bae6fd" />
-	<rect x="21" y="10" width="1" height="1" fill="#bae6fd" />
-	<rect x="26" y="10" width="1" height="1" fill="#1c1917" />
-	<rect x="5" y="11" width="1" height="1" fill="#1c1917" />
-	<rect x="24" y="11" width="1" height="1" fill="#1c1917" />
-	<rect x="5" y="12" width="23" height="1" fill="#44403c" />
+	<rect x="13" y="2" width="5" height="1" fill="#191715" />
+	<rect x="11" y="3" width="2" height="1" fill="#191715" />
+	<rect x="18" y="3" width="2" height="1" fill="#191715" />
+	<rect x="10" y="4" width="1" height="1" fill="#191715" />
+	<rect x="20" y="4" width="1" height="1" fill="#191715" />
+	<rect x="10" y="5" width="1" height="1" fill="#191715" />
+	<rect x="20" y="5" width="4" height="1" fill="#191715" />
+	<rect x="10" y="6" width="1" height="1" fill="#191715" />
+	<rect x="21" y="6" width="4" height="1" fill="#191715" />
+	<rect x="8" y="7" width="3" height="1" fill="#191715" />
+	<rect x="12" y="7" width="1" height="1" fill="#191715" />
+	<rect x="25" y="7" width="1" height="1" fill="#191715" />
+	<rect x="7" y="8" width="1" height="1" fill="#191715" />
+	<rect x="11" y="8" width="1" height="1" fill="#191715" />
+	<rect x="24" y="8" width="1" height="1" fill="#191715" />
+	<rect x="6" y="9" width="1" height="1" fill="#191715" />
+	<rect x="11" y="9" width="1" height="1" fill="#a8d0e5" />
+	<rect x="21" y="9" width="2" height="1" fill="#a8d0e5" />
+	<rect x="25" y="9" width="1" height="1" fill="#191715" />
+	<rect x="5" y="10" width="1" height="1" fill="#191715" />
+	<rect x="12" y="10" width="1" height="1" fill="#a8d0e5" />
+	<rect x="21" y="10" width="1" height="1" fill="#a8d0e5" />
+	<rect x="26" y="10" width="1" height="1" fill="#191715" />
+	<rect x="5" y="11" width="1" height="1" fill="#191715" />
+	<rect x="24" y="11" width="1" height="1" fill="#191715" />
+	<rect x="5" y="12" width="23" height="1" fill="#3e3a36" />
 </svg>

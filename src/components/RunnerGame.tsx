@@ -20,6 +20,7 @@ import {
 	GROUND_TEXTURE_TILE_WIDTH,
 	groundTextureCssUrl,
 	resolveGroundColor,
+	resolveGroundFarColor,
 } from "../lib/runner-ground";
 import {
 	drawPlayerFrame,
@@ -34,6 +35,7 @@ interface Props {
 	eventId: string;
 	color: string;
 	ground?: string;
+	groundFar?: string;
 }
 
 type Phase = Game["phase"];
@@ -46,9 +48,13 @@ const MAX_FRAME_DT = 0.25;
 const INTERACTIVE_SELECTOR =
 	"a, button, input, select, textarea, [contenteditable]";
 
-/** Ground dash strip: one `GROUND_DASH_WIDTH`-unit dash every `GROUND_DASH_TILE` units. */
-const GROUND_DASH_TILE = 16;
-const GROUND_DASH_WIDTH = 6;
+/**
+ * The ground line's thickness, in CSS px — deliberately not in world units.
+ * It marks where the ground meets the sky, so it stays a hairline at every
+ * `pixelScale` instead of thickening with the world. Named once because the
+ * canvas and the server-rendered placeholder both draw it.
+ */
+const GROUND_LINE_HEIGHT = 2;
 
 /**
  * The band's height as a CSS length, exposed as `--band-h` on the band. Single
@@ -77,7 +83,12 @@ const PIXEL_SCALE_CSS = `clamp(${TUNING.pixelScaleMin}px, min(calc(var(--band-h)
  * during play — React state only covers the dialog and the reduced-motion
  * `interactive` flag.
  */
-export default function RunnerGame({ eventId, color, ground }: Props) {
+export default function RunnerGame({
+	eventId,
+	color,
+	ground,
+	groundFar,
+}: Props) {
 	const bandRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const [interactive, setInteractive] = useState(false);
@@ -86,9 +97,16 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 	const [sceneDrawn, setSceneDrawn] = useState(false);
 	const hintId = useId();
 	const groundColor = resolveGroundColor(ground, color);
-	// CSS mirror of the canvas dash strip for the server-rendered placeholder.
-	// `--ps` (the live pixelScale) is inherited from the placeholder block below.
-	const groundDashGradient = `repeating-linear-gradient(to right, ${groundColor} 0 calc(${GROUND_DASH_WIDTH} * var(--ps)), transparent calc(${GROUND_DASH_WIDTH} * var(--ps)) calc(${GROUND_DASH_TILE} * var(--ps)))`;
+	// The far end of the canvas ground gradient and the below-fold section's
+	// tint. The resolver's fallback to the near ink is what keeps a theme without
+	// `groundFar` on the flat fill it had before the field existed.
+	const groundFarColor = resolveGroundFarColor(groundFar, groundColor);
+	// CSS mirror of the canvas ground gradient, also for the placeholder: the
+	// near ink at the ground line and the far ink at the band's bottom, each at
+	// `GROUND_FILL_ALPHA` over the hero background. Because both stops carry the
+	// same alpha, this is the same colour at every y as the canvas's interpolate-
+	// then-composite, which is what makes the handover invisible.
+	const groundFillGradient = `linear-gradient(to bottom, color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent), color-mix(in srgb, ${groundFarColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent))`;
 
 	const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 	const [board, setBoard] = useState<BoardState>({ status: "loading" });
@@ -365,6 +383,35 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			prevGroundOffset = view(game).groundOffset;
 		};
 
+		/**
+		 * The ground's vertical gradient, cached across frames: `draw()` runs on
+		 * every rAF frame, and a `createLinearGradient` per frame would allocate on
+		 * the hot path. It encodes the ground line (`view(game).groundY *
+		 * pixelScale`) and the band's bottom, so it is rebuilt only when that
+		 * geometry changes — at startup and after `resize()`, the two places
+		 * `groundY` moves. `null` when the far ink is not distinct, where the fill
+		 * stays the plain `groundColor` string and nothing is allocated at all.
+		 */
+		let groundGradient: CanvasGradient | null = null;
+
+		const refreshGroundFill = (): void => {
+			groundGradient = null;
+			if (groundFarColor === groundColor) return;
+			const s = view(game);
+			// The gradient spans exactly the filled band — the ground line to the
+			// band's bottom, which is the hero's bottom edge — so its far stop is
+			// the colour the below-fold section paints at that boundary.
+			const gradient = ctx.createLinearGradient(
+				0,
+				s.groundY * s.pixelScale,
+				0,
+				bandHeight,
+			);
+			gradient.addColorStop(0, groundColor);
+			gradient.addColorStop(1, groundFarColor);
+			groundGradient = gradient;
+		};
+
 		const applyCanvasSize = (): void => {
 			canvas.width = Math.round(cssWidth * dpr);
 			canvas.height = Math.round(bandHeight * dpr);
@@ -381,30 +428,34 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			// Transparent, so the hero's own background shows through.
 			ctx.clearRect(0, 0, cssWidth, bandHeight);
 
-			// Ground: a muted fill from the ground line down to the bottom of the
-			// band, with the tiled dash strip along its top edge. Raising the ground
-			// line with `TUNING.groundMargin` would otherwise leave dead white space
-			// beneath it; the fill makes that region read as ground. Kept at low
-			// alpha so hero text that overlaps the band keeps its contrast; the value
-			// is `GROUND_FILL_ALPHA`, shared with the below-fold details section so
-			// both read as one ground.
+			// Ground: a fill from the ground line down to the bottom of the band, with a
+			// solid line along its top edge. Raising the ground line with
+			// `TUNING.groundMargin` would otherwise leave dead space beneath
+			// it; the fill makes that region read as ground. The fill is the cached
+			// `groundGradient` (near ink at the ground line, far ink at the band's
+			// bottom) when the theme sets a distinct far ink, and the flat
+			// `groundColor` otherwise. The alpha is the mix ratio that composites
+			// the ink over the hero's `heroBg`, which is what puts the near end on a
+			// mid grey a step *lighter* than the player sprite rather than on the
+			// sprite's own value (see `GROUND_FILL_ALPHA`), and it stays below 1 so the
+			// shared `GROUND_TEXTURE` dashes drawn on top still read. The value is
+			// shared with the below-fold details section so both read as one ground.
 			const groundTop = s.groundY * px;
-			ctx.fillStyle = groundColor;
+			ctx.fillStyle = groundGradient ?? groundColor;
 			ctx.globalAlpha = GROUND_FILL_ALPHA;
 			ctx.fillRect(0, groundTop, cssWidth, bandHeight - groundTop);
 			ctx.globalAlpha = 1;
+			// The ground line and the dirt dashes deliberately keep the near ink rather
+			// than the gradient: the band's far end is light, and the grain has to
+			// read against both ends. The fill above may have left `fillStyle` on
+			// the gradient, so put the near ink back before they draw.
+			ctx.fillStyle = groundColor;
 
-			// Dash strip and dirt dashes: the parts of the ground that scroll.
-			const offset =
-				((s.groundOffset % GROUND_DASH_TILE) + GROUND_DASH_TILE) %
-				GROUND_DASH_TILE;
-			for (
-				let x = -offset;
-				x < s.worldWidth + GROUND_DASH_TILE;
-				x += GROUND_DASH_TILE
-			) {
-				ctx.fillRect(x * px, groundTop, GROUND_DASH_WIDTH * px, 2);
-			}
+			// The ground line: one solid hairline straight across the band, at the near
+			// ink and full opacity. It used to be a dash strip that scrolled with the
+			// ground, which read as a dotted edge rather than as where the ground
+			// starts, and a solid line has no phase to scroll in any case.
+			ctx.fillRect(0, groundTop, cssWidth, GROUND_LINE_HEIGHT);
 
 			// Dirt dashes, tiled at `GROUND_TEXTURE_TILE_WIDTH` and scrolling with
 			// the ground. Drawn as one batched path (a `rect()` per dash, a single
@@ -488,10 +539,13 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			}
 			draw();
 
-			// Keep animating while idle (the player bob) as well as while running; only
-			// death stops the loop. `paused` and `inView` still gate it, and reduced
-			// motion never reaches here.
-			if (view(game).phase !== "dead" && !paused && inView) {
+			// Only a run keeps the loop alive. Idle is a single static frame — the
+			// simulation holds it still (see `step`) — so re-requesting frames there
+			// would repaint an unchanging scene forever, and there is nothing else for a
+			// frame to advance: the parallax only moves while the ground scrolls.
+			// `paused` and `inView` still gate the loop, and reduced motion never
+			// reaches here.
+			if (view(game).phase === "running" && !paused && inView) {
 				raf = requestAnimationFrame(frame);
 				return;
 			}
@@ -536,9 +590,16 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			held.clear();
 		};
 
+		/**
+		 * Start the render loop, if this phase has anything to animate. Only a run
+		 * does: idle is one static frame and death is one frozen frame, and both are
+		 * already painted, so either would leave the loop redrawing identical pixels
+		 * sixty times a second. Gating here rather than at each call site keeps the
+		 * visibility, intersection and input paths free of phase checks.
+		 */
 		const startLoop = (): void => {
 			if (reduced || raf || paused || !inView) return;
-			if (view(game).phase === "dead") return;
+			if (view(game).phase !== "running") return;
 			raf = requestAnimationFrame(frame);
 		};
 
@@ -584,6 +645,9 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			applyCanvasSize();
 			// Geometry is simulation state; resize keeps the run alive.
 			game = resize(game, { bandHeight, canvasWidth: cssWidth });
+			// Rebuild after `resize`, not before: the cached gradient encodes the
+			// new `groundY` that call produces.
+			refreshGroundFill();
 			measureParallax();
 			draw();
 		};
@@ -670,6 +734,7 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 		};
 
 		applyCanvasSize();
+		refreshGroundFill();
 		draw();
 		measureParallax();
 
@@ -718,11 +783,11 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 				band.focus({ preventScroll: true });
 			}
 
-			// Idle now animates too (the player bob), so the loop must be running
-			// before the first input. Under reduced motion `reduced` is true and
-			// `startLoop` returns immediately, leaving the one static idle frame that
-			// `draw()` already painted above.
-			startLoop();
+			// No loop is started here, and none is needed: idle is a still scene that
+			// `draw()` has already painted above, and that the placeholder handed over
+			// to once every frame decoded. The first frame with anything to animate is
+			// the first run, which `press` starts; under reduced motion `reduced` is
+			// true and no loop ever starts at all.
 		}
 
 		return () => {
@@ -742,7 +807,7 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			tapTarget.removeEventListener("pointercancel", onPointerCancel);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
-	}, [eventId, color, groundColor]);
+	}, [eventId, color, groundColor, groundFarColor]);
 
 	return (
 		<>
@@ -769,7 +834,20 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 				 * the load flash. `sceneDrawn` drops it once the canvas has painted the
 				 * full scene (see the effect). Every measurement is tied to the same
 				 * constants the canvas uses, with `--ps` standing in for the live
-				 * `pixelScale`, so the handover does not move anything.
+				 * `pixelScale`, so the handover does not move anything. The ground fill
+				 * below reproduces the canvas's two-stop gradient as a CSS
+				 * `linear-gradient`, each stop the corresponding ink at
+				 * `GROUND_FILL_ALPHA` (spelled `color-mix(in srgb, … A%, transparent)`)
+				 * over the hero's `heroBg`. The canvas interpolates the two opaque inks
+				 * and composites the result at that alpha over the same `heroBg`; the
+				 * CSS gradient interpolates the same two inks at the same alpha over
+				 * the same `heroBg`. Because both stops carry the same alpha, the two
+				 * agree at every y — which is the whole reason the handover between
+				 * canvas and placeholder is invisible. Spelling those stops as mixes over
+				 * `transparent` is only correct because this subtree composites onto the
+				 * hero background and nothing between here and it paints a colour of its
+				 * own; the below-fold section in `Invite.astro` has to name the base
+				 * explicitly for the same reason, since it sits on the page instead.
 				 */}
 				{!sceneDrawn && (
 					<div
@@ -782,16 +860,21 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 							className="absolute inset-x-0 bottom-0"
 							style={{
 								top: `calc(100% - ${TUNING.groundMargin} * var(--ps))`,
-								backgroundColor: `color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent)`,
-								backgroundImage: groundTextureCssUrl(groundColor),
-								backgroundSize: `calc(${GROUND_TEXTURE_TILE_WIDTH} * var(--ps)) calc(${GROUND_TEXTURE_TILE_HEIGHT} * var(--ps))`,
+								// Texture on top, gradient underneath; `backgroundSize` lists one
+								// entry per layer in the same order. The gradient covers the box
+								// on its own, so its size stays `auto` and it never tiles.
+								backgroundImage: `${groundTextureCssUrl(groundColor)}, ${groundFillGradient}`,
+								backgroundSize: `calc(${GROUND_TEXTURE_TILE_WIDTH} * var(--ps)) calc(${GROUND_TEXTURE_TILE_HEIGHT} * var(--ps)), auto`,
 							}}
 						/>
+						{/* The ground line, the same solid hairline the canvas draws: the
+						    theme's near ink at full opacity, at the shared thickness. */}
 						<div
-							className="absolute inset-x-0 h-0.5"
+							className="absolute inset-x-0"
 							style={{
 								top: `calc(100% - ${TUNING.groundMargin} * var(--ps))`,
-								backgroundImage: groundDashGradient,
+								height: `${GROUND_LINE_HEIGHT}px`,
+								backgroundColor: groundColor,
 							}}
 						/>
 						<div

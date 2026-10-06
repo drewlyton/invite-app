@@ -398,28 +398,36 @@ function resizeTest(): Assertion {
 
 /**
  * The pose union is the renderer's whole interface to the animation state, so
- * it gets its own assertion: idle must bob in place without advancing the
- * world, a run must open on a static `push` and settle into `ride` after
- * `TUNING.pushDuration`, a grounded jump must animate crouch -> airborne ->
- * crouch and settle back into `ride`, and a collision must freeze the pose the
- * character died on rather than switching to a crash sprite.
+ * it gets its own assertion: idle must hold perfectly still — same pose, same
+ * frame, same player position, no distance, no obstacles — a run must open on a
+ * static `push` and settle into `ride` after `TUNING.pushDuration`, a grounded
+ * jump must animate crouch -> airborne -> crouch and settle back into `ride`,
+ * and a collision must freeze the pose the character died on rather than
+ * switching to a crash sprite.
  */
 function poseTest(): Assertion {
 	const idle = createGame({ seed: 5, bandHeight: 190, canvasWidth: 640 });
 	const idleView = view(idle);
-	// `step` clamps dt to `TUNING.maxDt`, so one call cannot span a full
-	// `frameDuration`; two clamped calls do.
-	const idleStepped = step(
-		step(idle, TUNING.frameDuration, { jump: false }),
-		TUNING.frameDuration,
-		{ jump: false },
-	);
+	// Step the idle scene for four frame periods' worth of simulated time. The
+	// phase is asserted to be completely static, so any animation, drift or world
+	// advance over that span is a failure — including the two-frame bob the idle
+	// pose used to run, which is why this asserts frame 0 rather than a cycle.
+	let idleStepped = idle;
+	for (let i = 0; i < 8; i++) {
+		idleStepped = step(idleStepped, TUNING.frameDuration, { jump: false });
+	}
 	const idleAfterView = view(idleStepped);
-	const idleAnimates =
+	const idleHoldsStill =
 		idleView.phase === "idle" &&
 		idleView.player.pose === "idle" &&
+		idleView.player.frame === 0 &&
+		idleAfterView.phase === "idle" &&
 		idleAfterView.player.pose === "idle" &&
-		idleAfterView.player.frame === 1 &&
+		idleAfterView.player.frame === 0 &&
+		idleAfterView.player.x === idleView.player.x &&
+		idleAfterView.player.y === idleView.player.y &&
+		// `RenderState.groundOffset` *is* the distance travelled (see `view`), so
+		// this is the world-advance check, not merely a scroll-position check.
 		idleAfterView.groundOffset === idleView.groundOffset &&
 		idleAfterView.obstacles.length === 0;
 
@@ -488,7 +496,7 @@ function poseTest(): Assertion {
 	const deadFreezes = frozen && view(after).phase === "dead";
 
 	const pass =
-		idleAnimates &&
+		idleHoldsStill &&
 		startsPush &&
 		settlesRide &&
 		pushStayedFrame0 &&
@@ -499,9 +507,9 @@ function poseTest(): Assertion {
 		ridesAfterLanding &&
 		deadFreezes;
 	return {
-		name: "7. Pose model (idle bob, push -> ride, jump phases, dead freeze)",
+		name: "7. Pose model (static idle, push -> ride, jump phases, dead freeze)",
 		pass,
-		detail: `idle bobs (frame 0->1 after two maxDt-clamped steps, no distance/obstacles): ${idleAnimates}; start pose=push: ${startsPush}; push held frame 0 for ${pushSeconds.toFixed(4)}s vs pushDuration=${TUNING.pushDuration} (within one DT): ${pushDurationAccurate} and static: ${pushStayedFrame0}; settled to ride: ${settlesRide}; jump crouch->air->crouch: takeoff frame 0 ${jumpStartsCrouched}, air frame 1 ${sawAirFrame}, landing frame 2 ${landingCrouch}; back to ride after the crouch: ${ridesAfterLanding}; no-input collision freezes ${deadPose}[${deadFrame}] for 60 further steps: ${deadFreezes} (collision after ${deadSteps} steps).`,
+		detail: `idle holds frame 0 with no world advance (groundOffset), player movement or obstacles for ${(8 * TUNING.frameDuration).toFixed(2)}s of steps: ${idleHoldsStill}; start pose=push: ${startsPush}; push held frame 0 for ${pushSeconds.toFixed(4)}s vs pushDuration=${TUNING.pushDuration} (within one DT): ${pushDurationAccurate} and static: ${pushStayedFrame0}; settled to ride: ${settlesRide}; jump crouch->air->crouch: takeoff frame 0 ${jumpStartsCrouched}, air frame 1 ${sawAirFrame}, landing frame 2 ${landingCrouch}; back to ride after the crouch: ${ridesAfterLanding}; no-input collision freezes ${deadPose}[${deadFrame}] for 60 further steps: ${deadFreezes} (collision after ${deadSteps} steps).`,
 	};
 }
 

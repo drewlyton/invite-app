@@ -4,8 +4,13 @@ Plan for replacing the bottom parallax cloud layer of the `game-night-light` her
 with an endless runner in the spirit of the browser 404 page's game: a player
 character runs along the ground and jumps over ground obstacles and low flyers,
 while high flyers pass harmlessly overhead. **Jump is the only move** — there is
-no duck. Scope is the hero background only — the RSVP form, page
-content, `.ics` generation, and OG images are untouched.
+no duck. Scope is the hero background only: the RSVP form, page content, and
+`.ics` generation are untouched, and no OG-image code changed. The OG **card** is
+not untouched, though: `src/pages/og/[eventId].png.ts` feeds `theme.heroBg`
+straight into the card background, so moving this theme's sky from white to
+stone-200 moved the card with it (`#ffffff` → `#e7e5e4`). That is an accepted
+consequence, not an oversight — the card's title and body text keep their
+contrast on the slightly darker field.
 
 Status: **implemented.** The game is live in the `game-night-light` hero. The
 leaderboard that hangs off its game-over flow is a separate feature, owned by
@@ -15,7 +20,7 @@ leaderboard that hangs off its game-over flow is a separate feature, owned by
 
 | Question | Decision |
 | --- | --- |
-| Idle behaviour | The player sprite bobs in place at the left edge of the canvas; nothing else moves until input, and the rAF loop runs only to drive that bob. |
+| Idle behaviour | The player sprite holds still at the left edge of the canvas; nothing else moves until input, and no rAF loop runs — idle is one static frame. |
 | Start trigger | Tapping the hero **or** pressing space while the game region is focused. |
 | Input safety | Must never interfere with the invitee's ability to read the invite or fill out the RSVP form. |
 | Mobile | Same as desktop: tap the hero. No separate touch controls. |
@@ -388,9 +393,15 @@ At `airTime ≈ 0.51 s` a jump covers ~46 units of ground at start speed and ~14
 units at max speed. That is the reference for how wide a cluster the spacing rule
 will permit.
 
-**Ground line.** A tiled dash strip along the top edge and the staggered dirt
-dashes below it are the ground's scrolling elements, and both are frozen while
-idle.
+**Ground line.** A solid hairline across the top edge, drawn at
+`GROUND_LINE_HEIGHT` (2) CSS px in the near ink at full opacity. That unit is
+deliberate: the line marks where the ground meets the sky, so it stays a hairline
+at every `pixelScale` rather than thickening with the world. It does not scroll
+either — a solid line has no phase to scroll in — so the staggered dirt dashes
+below it are the ground's only scrolling element, and those are frozen while
+idle. Both renderers draw the line: the canvas as one `fillRect` across the band,
+the server-rendered placeholder as a full-width div of the same height and
+colour.
 
 ### Collision
 
@@ -426,17 +437,37 @@ than hard.
 - Optional inverted-palette phase at score milestones is **off by default**: it
   flips to a dark background and fights both the white page and the contrast
   rules in [Accessibility](#accessibility).
-- **The ground is filled, not just a line.** Raising `GROUND_MARGIN` lifts the
-  ground line, and a bare dash strip floating there would leave dead white space
-  beneath it. The band from `groundY` down to the bottom of the band is filled
-  with `theme.runner.ground ?? theme.runner.color` at `GROUND_FILL_ALPHA` (0.22 in
-  `src/lib/runner-ground.ts`, ≈ `#ecebe9` over the white hero), with the dash strip
-  drawn at full opacity along the top edge. That alpha is an unmeasured feel knob
-  and the single place to adjust the fill's weight — the below-fold details section
-  reads the same constant and paints the same colour at the same alpha with
-  `color-mix`, so on viewports tall enough to show the band the section reads as the
-  ground continuing rather than a separate band. Keep it muted, or it eats the hero
-  text's contrast on short screens.
+- **The ground is a filled band, not just a line, and it fades towards the
+  fold.** Raising `GROUND_MARGIN` lifts the ground line, and a bare line
+  floating there would leave a dead band of sky beneath it. The band from
+  `groundY` down to the bottom of the band is filled with a vertical gradient:
+  `theme.runner.ground ?? theme.runner.color` at the ground line, and
+  `theme.runner.groundFar` at the band's bottom, both composited at
+  `GROUND_FILL_ALPHA` (0.45 in `src/lib/runner-ground.ts`).
+  `resolveGroundFarColor(groundFar, near)` falls back to the near ink, so a theme
+  without `groundFar` keeps the flat fill it had before the field existed and no
+  gradient is built at all. The gradient is **cached across frames** — `draw()`
+  runs every rAF frame, so calling `createLinearGradient` per frame would allocate
+  on the hot path — and is rebuilt only when the geometry it encodes changes: at
+  startup and after `resize()`, the two places `groundY` moves.
+  That alpha is not a free feel knob: it decides how far the fill moves off the
+  sky towards the ground ink, and it is set so the near end lands on ≈ `#a6a3a1`
+  over `heroBg`, a deliberately **lighter** mid grey in the player sprite's value
+  family (the sprite's own pixels average ≈ `#46413d`, `#443e3a`–`#494341`
+  depending on the pose frame), rather than a near-white band under a grey
+  character. That cuts the ground↔sprite contrast from ≈ 8.5:1 to ≈ 4:1 while
+  still leaving the character reading as a figure standing *on*
+  the ground rather than as part of it. The far end composites to ≈ `#dfdddb`,
+  and the below-fold details section is painted in it, so the hero/section
+  boundary is a colour match rather than a step — and it is what gives that text
+  its contrast: `#1c1917` on the far end is 12.91:1, where it was 6.97:1 on the
+  old flat mid grey. The below-fold section reads the same constant and paints the
+  far ink at the same alpha with `color-mix`, so on viewports tall enough to show
+  the band it reads as the ground continuing. The fill must stay below 1 as well:
+  the `GROUND_TEXTURE` dashes are drawn on top, and an opaque fill would swallow
+  them. The ground line across the top edge keeps the **near** ink, like the dirt
+  dashes below it, because the far end is light and both have to read against it
+  as well as against the dark end.
 - **The ground carries a shared 8-bit dirt texture.** `GROUND_TEXTURE` in
   `src/lib/runner-ground.ts` is the single list of staggered horizontal dirt
   dashes — `{ x, y, w }`, each one world unit tall, in world units with `y`
@@ -452,7 +483,23 @@ than hard.
   tile by `GROUND_TEXTURE_CSS_SCALE` (2 CSS px per world unit) — the canvas's
   live `pixelScale` (≈1.5–2.1) cannot be reproduced on a remote element. The alpha
   stays low so the texture reads as grain, not a pattern, and the hero/details text
-  keeps its contrast.
+  keeps its contrast. Both renderers draw the dashes in the **near** ink even
+  where the fill beneath has faded towards the far end: the far end is light, and
+  the grain has to read against it as well as against the dark end.
+- **The below-fold section's grain fades with depth.** That section paints the
+  texture on its own absolutely-positioned layer rather than as a second
+  `background-image` on the section, purely so it can be masked: a mask on the
+  section itself would fade the ground fill along with the grain. The layer
+  carries `mask-image: linear-gradient(to bottom, #000, transparent)` (a gradient
+  masks by its alpha under the default `mask-mode: match-source`), so the dashes
+  meet the canvas band's dashes at `GROUND_TEXTURE_ALPHA` — the boundary stays
+  continuous — and then thin out to nothing by the section's bottom edge, where
+  the ground ends and the RSVP section begins. Measured against the fill, a dash
+  goes from ≈ 1.41:1 near the top of the section to ≈ 1.07:1 near the bottom and
+  is gone at the last row. The details text gains from this as well: the lower it
+  sits, the less grain it has to read through. Because the layer is positioned and
+  the section's details are static, the details sit in their own `relative`
+  wrapper so they paint above the grain.
 
 ## Sprites
 
@@ -488,9 +535,10 @@ background with a flood fill seeded from the image border (so light pixels
 *inside* the character survive), finds the eight frames by geometry, writes the
 roles the game uses as trimmed, transparent PNGs to `public/runner/player/`, and
 splices the `PLAYER_FRAMES` manifest into the marked block in
-`runner-sprites.ts`. `scripts/verify-sprites.ts` asserts the frame counts and
-that every URL resolves to a PNG with an alpha channel that has both transparent
-and opaque pixels (i.e. the background really was removed).
+`runner-sprites.ts`. `scripts/verify-sprites.ts` asserts the frame counts, that
+every URL resolves to a PNG with an alpha channel that has both transparent and
+opaque pixels (i.e. the background really was removed), and that the frames
+directory holds nothing the manifest does not reference.
 
 ### Animation flow
 
@@ -498,18 +546,27 @@ The run reads idle → push → ride → jump → ride, and a collision ends it:
 
 | Pose | Frames | Role | Used for |
 | --- | --- | --- | --- |
-| `idle` | 2 | `idle-0`, `idle-1` | two-frame bob in place; board held vertically beside the body |
+| `idle` | 1 | `idle-0` | held still; board held vertically beside the body |
 | `push` | 1 | `crouch` | holds for `TUNING.pushDuration` (a few seconds) at the start of a run |
 | `ride` | 1 | `ride-stand` | the static, both-feet-on-the-board pose for the rest of the run |
 | `jump` | 3 | `crouch`, `air`, `crouch` | takeoff crouch, airborne, landing crouch |
 
-`push` and `ride` are static single frames. `jump` is the only phase-driven
-pose: `runner.ts` picks frame 0 while the takeoff crouch
+`idle`, `push` and `ride` are static single frames. `jump` is the only
+phase-driven pose: `runner.ts` picks frame 0 while the takeoff crouch
 (`TUNING.jumpCrouchDuration`) is running, frame 1 once airborne, and frame 2 for
 the landing crouch (`TUNING.landCrouchDuration`) after touchdown, then the run
 settles back into `ride`. The crouch role is shared by `push` and `jump`, so it
-is cut once and the manifest reuses the URL. The sheet's board-leaning pose (2),
-board-held-in-front pose (3) and tilted carve (7) are unused.
+is cut once and the manifest reuses the URL.
+
+The sheet's second idle frame goes unused, like its board-leaning pose (2),
+board-held-in-front pose (3) and tilted carve (7): `ROLE_FRAMES` in
+`scripts/build-sprites.ts` lists none of them, so no PNG is cut for them and the
+frames directory holds exactly what the manifest references. The idle frame is
+the one omission that is a decision rather than a leftover — it differed from the
+first on about a third of the sprite's pixels, and alternating the two at
+`TUNING.frameDuration` read as a twitch at the size the sprite renders, which is
+why the pose is a single held frame (see
+[Performance and lifecycle](#performance-and-lifecycle)).
 
 **There is no `dead` pose, and no crash sprite is needed.** A collision freezes
 the pose and frame the character died on — `stepPlayer` stops recomputing them
@@ -605,8 +662,9 @@ both the requested behaviour and the reason the page stays cheap.
   is hidden the padding shrinks to a small reserve (`pb-12`) that still keeps the
   content clear of the ground RSVP link pinned at the hero's bottom.
 - Game sits at `z-0`, `.hero-content` stays `z-10`.
-- Colour: render in the same muted tone family as the clouds (`#d6d3d1`-ish) from
-  `theme.runner.color`, not a bold dark silhouette.
+- Colour: render in the same muted stone tone family as the hero's other art
+  (the clouds' ink, the ground's mid grey) from `theme.runner.color`, not a bold
+  dark silhouette.
 
 ### Hero composition and below-the-fold details
 
@@ -623,13 +681,14 @@ and it applies to `game-night-light` only. `default`, `game-night`, and `birthda
 render the details inside the hero exactly as before.
 
 The below-fold section also drops the `<hr>` the in-hero usage keeps — there is
-nothing above it to divide from — and carries the game ground's tint (see
-[Rendering](#rendering)), so it reads as the ground continuing past the hero's
-bottom edge. Its top and bottom padding match (`pt-10 pb-10 sm:pt-14 sm:pb-14`),
+nothing above it to divide from — and carries the **far end** of the game ground's
+gradient, the tone the canvas fades to at the hero's bottom edge (see
+[Rendering](#rendering)), so it reads as the ground continuing rather than a
+separate band. Its top and bottom padding match (`pt-10 pb-10 sm:pt-14 sm:pb-14`),
 so the date/time/location block is centred in the tinted band rather than hugging
 its top edge. On short viewports (below ~640px height) that tint no longer
 continues anything: the band is `display: none`, so the section still carries the
-theme's ground tint on its own.
+far ink on its own.
 
 For a **runner** theme the "RSVP by …" link does not move below the fold with the
 rest of the details. It renders in the hero's game ground, in the compact `ground`
@@ -753,6 +812,10 @@ carries a CSS ambient drift differs by layer family:
   the player moves, and their only positional change is the player-driven offset.
   Keep the twinkle — it is an opacity pulse in place, not motion, so it does not
   conflict with "stationary".
+- **The moon** is the exception to the whole arrangement: no `data-parallax`, no
+  `.hero-sky-strip`, no `SKY_COPIES`. It is pinned to the hero's top-right corner
+  and does not move with the player at all — see
+  [The moon](#the-moon-which-does-not-move).
 
 The split is load-bearing. Cloud ambient drift stays a **CSS** animation because
 clouds must keep drifting while the game is idle, and while idle there is
@@ -760,6 +823,49 @@ deliberately **no rAF loop running**. Moving it into JS would freeze the clouds 
 every visitor who never plays. Stars need no such mechanism, which is why they lose
 the CSS animation entirely rather than merely being slowed down — a slow drift is
 still motion.
+
+### The moon, which does not move
+
+`game-night-light` also has a moon in the hero's top-right. It is the one sky
+layer with **no `data-parallax` and no strip/section structure at all**: every
+other layer is the two nested transforms plus `SKY_COPIES` described above, while
+the moon is a corner-pinned disc. That is not an omission — a disc pinned to a
+corner and then run through the player-driven transform would slide out of its own
+corner. Because it never moves, it needs no reduced-motion handling, unlike the
+clouds, which need theirs precisely because they do move. The disc is decorative
+(`aria-hidden` wrapper, `alt=""`).
+
+The art is `public/moon/moon.svg`: a 23-unit-grid pixel disc with a `#ffffff`
+face, a 1px `#a8a29e` (stone-400) rim and craters in `#d6d3d1` / `#e7e5e4`. The
+rim is load-bearing. The glow drives the sky directly behind the disc to
+near-white, so without the rim the disc would dissolve into its own light. The
+grid is chosen so one moon pixel renders at about the size of one cloud pixel.
+
+`theme.moon` is `{ glow: string } | null` — `{ glow: "#ffffff" }` on this theme,
+`null` on the other three. Unlike `clouds.color`, `glow` **is** consumed: it is
+mixed towards `transparent` for the radial gradient's stops, so it is not another
+dead flag. `Invite.astro` holds three constants in its frontmatter. `MOON_X` and
+`MOON_Y` are the moon's centre: the disc is placed with `left`/`top` at that pair
+and the glow's `radial-gradient` is centred on the same pair, so the light cannot
+drift off its source. `MOON_GLOW_RADIUS` is the falloff radius.
+
+The markup order is load-bearing too. The glow paints **behind** the star and
+cloud layers, so the corner brightens *around* them instead of washing them out,
+and the disc is therefore behind the clouds that drift across it as well.
+
+`--moon-y` is `max(7rem, 16%)`, not a bare percentage: on a short viewport a bare
+16% puts the disc behind the opaque `HIGH SCORES` button, which clips it, and the
+floor clears the button plus half the disc at its largest size. The radius is a
+viewport-relative length with clamps (`clamp(240px, 58vw, 820px)`), because a
+corner of light is a fraction of the viewport width; a bare percentage would let
+the falloff drift with the aspect ratio.
+
+The effect has a hard ceiling worth recording. `heroBg` is a light stone
+(`#e7e5e4`), so the brightest the wash can be is white and the whole effect can
+only span the ~24/255 between them. It reads because it **covers a large area**,
+not because it is strong. Measured R channel across the hero: 255 at the moon,
+247 at 1100px, 239 at 900px, and 231 — the base sky — in the column the character
+stands in.
 
 ### Wrap period and copy count
 
@@ -846,9 +952,12 @@ agree about which box is being measured.
 Add to the `Theme` type in `src/lib/themes.ts`:
 
 ```ts
+moon: { glow: string } | null;  // required: the sky light's colour, or null
+
 runner: {
   color: string;        // sprite + ground line
   ground: string;       // optional, defaults to color
+  groundFar?: string;   // optional far end of the ground gradient, defaults to ground
   celebrateAt?: number; // optional milestone
   celebrationMessage?: string;
 } | null;
@@ -856,10 +965,11 @@ runner: {
 detailsBelowFold: boolean;   // required: true renders EventDetails after the hero
 ```
 
-`detailsBelowFold` is `true` only on `game-night-light`.
+`detailsBelowFold` is `true` only on `game-night-light`, and `moon` is non-null
+only there.
 
-Set it on `game-night-light` (and leave `null` on `default`, `game-night`, and
-`birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:load … />}`.
+Set `runner` on `game-night-light` (and leave it `null` on `default`,
+`game-night`, and `birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:load … />}`.
 
 **`client:load`, plus a server-rendered placeholder in the band.** `client:idle`
 was the original choice, to keep the island off the critical path. But it produced
@@ -871,11 +981,15 @@ text, stars, clouds and status line painted immediately.
 
 Two things remove that flash now. `client:load` hydrates as soon as the module
 loads, and the band **server-renders a CSS approximation of the idle scene** —
-the ground fill, its `GROUND_TEXTURE` grain and the dash strip, plus the idle
-sprite — which the browser paints with the rest of the hero. The island then keeps
-the canvas blank until every frame is decoded and drops the placeholder in the
-same turn as its first full draw (`sceneDrawn`), so the handover lands between two
-paints rather than flashing a partial scene.
+the ground fill as the same two-stop gradient (the `GROUND_TEXTURE` grain layered
+over it, gradient beneath), the ground line in the near ink, and the idle sprite,
+drawn as `PLAYER_FRAMES.idle[0]`. That first idle frame is the one the
+simulation holds for the whole idle phase, so the placeholder and the canvas
+agree pose for pose and the handover has nothing to correct. The browser paints
+the placeholder with the rest of the hero, and the island keeps the canvas blank
+until every frame is decoded and drops the placeholder in the same turn as its
+first full draw (`sceneDrawn`), so the handover lands between two paints rather
+than flashing a partial scene.
 
 The approximation is a **second rendering path**, and that is its cost. It is kept
 honest by deriving every measurement from the same constants the canvas uses:
@@ -898,10 +1012,12 @@ event, which is acceptable because `game-night-light` is this event's theme.
 - The invite's information is fully present in the DOM text. The game is never
   the only route to anything.
 - **`prefers-reduced-motion: reduce`**: render the idle scene and do not offer
-  play at all — no rAF, no status line, no extra tab stop. This falls out for free
-  because idle is already a static single draw.
+  play at all — no rAF, no status line, no extra tab stop. Nothing has to be
+  switched off to get there: idle is a static single draw in every mode, so the
+  reduced-motion branch only declines to offer play.
 - Contrast: `#1c1917` body text must keep its ratio over the sprite colour.
-  Verify the muted grey against white before picking it.
+  Verify the muted grey against the hero background (`heroBg`, `#e7e5e4` for
+  `game-night-light`) before picking it.
 - The game region is keyboard-operable, and the band is **autofocused on load**
   (see below). An earlier revision gave it a visible focus indicator, but because the
   band is full-width and flush with the bottom of the viewport, only the ring's **top
@@ -947,21 +1063,32 @@ event, which is acceptable because `game-night-light` is this event's theme.
 
 ## Performance and lifecycle
 
-- **Idle runs a loop, for the bob.** The player's idle pose is a two-frame
-  animation, so the rAF loop starts on mount (the interactive case) and runs
-  while `phase !== "dead"`; death stops it. This is deliberate, not a
-  regression: the bob is the point of the idle scene. The loop is still gated by
-  `prefers-reduced-motion` (no loop at all — one static idle frame drawn once),
-  `document.hidden`, and the hero's `IntersectionObserver`, so it costs nothing
-  while the visitor fills in the RSVP form or the hero is off screen. Parallax
-  still advances only while `running`; idle frames redraw the same scene with the
-  next bob frame.
+- **Idle runs no loop, and needs none.** The idle scene is a single static frame
+  — the `idle` pose is one frame (`idle-0`; the sheet's second idle frame is not
+  cut at all, see [Sprites](#sprites)) and nothing else moves until input —
+  so the rAF loop runs only while `phase === "running"`, and no frame is
+  scheduled at idle or after death. `startLoop` holds that gate: it returns
+  unless the phase is `running`, which leaves the visibility, intersection and
+  input paths free of phase checks. The loop is also gated by
+  `prefers-reduced-motion` (which never starts one at all), `document.hidden`,
+  and the hero's `IntersectionObserver`, so it costs nothing while the visitor
+  fills in the RSVP form or the hero is off screen. Parallax advances only while
+  `running`; the idle sky still moves because the cloud drift and the star
+  twinkle are CSS animations, never loop frames. Measured in headless Chrome at
+  1280×800: **zero** `requestAnimationFrame` calls over 1.5s of idle (an
+  instrumented wrapper around `window.requestAnimationFrame`), against 48 calls
+  over ~0.9s once a run starts; the player's region of the canvas is
+  pixel-identical across two captures 900ms apart (0 differing pixels), and
+  differs by 2857 pixels between idle and a run in flight. The rest of the band
+  does still change between idle captures — that is the star field's 4s twinkle,
+  a separate, deliberate opacity pulse, not the player.
 - Pause on `document.visibilitychange` and when the hero leaves the viewport
   (`IntersectionObserver`, threshold 0). A rAF loop running while someone fills
   out the RSVP form is pure waste.
 - On resume after pause, clamp `dt` so a long pause cannot teleport obstacles
   through the player.
-- DPR capped at 2. Redraw on `resize` (debounced) and on the idle frame.
+- DPR capped at 2. Redraw on `resize` (debounced) and on each running frame;
+  between runs the canvas is left as painted, because idle draws nothing new.
 - No React re-render per frame — see [Rendering](#rendering).
 
 ## Implementation order
@@ -1026,20 +1153,38 @@ than hidden:
   relative to the section.
 - **`will-change` is gated, not always on.** `.hero-sky-strip` carries no static
   hint; `[data-phase="running"] .hero-sky-strip { will-change: transform }` applies
-  only while a run is in flight — the rAF loop is stopped on death, so `running` is
-  the only phase that should promote, and `dead` correctly does not. The component
-  writes `data-phase` on the hero. Measured with CDP `LayerTree` at 800×800: idle
-  went from 46 layers (7 promoted) to **27 with 1**; during a run it is 45 with all
-  7 promoted. Dropping `will-change` outright is **not** equivalent — with the
-  JS-written transform but no hint, Chrome promoted none of the six star strips
-  during play, so that shortcut trades idle cost for lost play-time compositing.
+  only while a run is in flight — the rAF loop is stopped on death, and idle now
+  schedules no frames at all, so `running` is the only phase that should promote
+  and `dead` correctly does not. The component writes `data-phase` on the hero.
+  Measured with CDP `LayerTree` at 800×800: idle went from 46 layers (7 promoted)
+  to **27 with 1**; during a run it is 45 with all 7 promoted. Those idle counts
+  were taken while idle still ran a loop, and what they measure — the absence of
+  a static `will-change` hint — is a property of the CSS gating rather than of
+  frames being scheduled, so nothing in them follows from the loop. They have not
+  been re-measured since idle stopped scheduling frames, and this document does
+  not invent a replacement. Dropping `will-change` outright is **not** equivalent
+  — with the JS-written transform but no hint, Chrome promoted none of the six
+  star strips during play, so that shortcut trades idle cost for lost play-time
+  compositing.
 - The star layers were restructured into the periodic multi-copy form for **every**
   theme that declares `stars`, which includes `game-night`. It no longer gains any
   motion (stars have no ambient drift), so the only difference there is structural.
   No live page is affected: only `30th-bday` and `first-bday` have content, and
   `game-night` is unreferenced.
-- The ground fill's `GROUND_FILL_ALPHA` (0.22) is an unmeasured guess, since no
-  browser was available to check contrast against the hero text.
+- **The ground fill is a gradient, and its numbers come from code and one
+  headless check.** `GROUND_FILL_ALPHA` (0.45) is a computed ratio rather than a
+  measured one: it sets how far both gradient stops move off the sky towards the
+  ground ink. Over `heroBg` the near end composites to ≈ `#a6a3a1` and the far end
+  to ≈ `#dfdddb`. Checked in a headless Chrome at 1280×800: the canvas measures
+  `#a6a3a0` at the ground line and `#dfdcdb` at the hero's last row, while the
+  below-fold section's `color-mix` resolves to `#dfdddb` — one unit of rounding,
+  not a visible step — so the hero/section seam does not show. The SSR
+  placeholder was checked the same way, by loading the page with script execution
+  disabled so the island never hydrates: its two-layer background matches the
+  hydrated canvas within 1/255 at every sampled row, which is precisely the
+  handover the placeholder exists to make invisible. That is the whole
+  verification: no real display and no perceptual judgement were involved, and
+  any change to `heroBg` or either ground ink invalidates all of it.
 - `TUNING`, `Tuning`, and `AIR_TIME` are exported, and `createGame` accepts
 `tuning?: Partial<Tuning>`. This is a deliberate addition to the surface described
 above: it lets the debug page and harness read real values instead of hand-copied
@@ -1154,10 +1299,12 @@ hero):
 - [ ] No score is shown before the first play; it appears in the status line when
       a run starts, shows the live score while running, and on death stays visible
       above the game-over message.
-- [ ] The ground fill reads as ground rather than a grey slab, and the dash strip is
-      still distinguishable against it.
+- [ ] The ground fill reads as ground rather than a grey slab, and the ground line
+      is still distinguishable against it.
 - [ ] The raised ground does not make the playfield feel cramped above the line.
-- [ ] Idle: stars are completely still; clouds still drift slowly.
+- [ ] Idle: the player holds its frame with no motion, the star layers are
+      positionally still (their twinkle is an opacity pulse), and the clouds still
+      drift slowly.
 - [ ] Death and restart: the sky holds position and resumes smoothly, with no snap.
 
 ## Non-goals

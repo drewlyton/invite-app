@@ -24,12 +24,25 @@ const chevronClass =
 	size === "ground"
 		? "h-3.5 w-3.5 motion-safe:animate-bounce-down sm:h-4 sm:w-4"
 		: "h-4 w-4 motion-safe:animate-bounce-down";
+
+// The link stays visually secondary, but how far below full opacity it can sit
+// depends on the surface behind it, and the two sizes sit on different ones.
+// `hero` renders over the hero background (the sky) and keeps the original
+// 0.75. `ground` renders inside the game ground band, on the light end of the
+// ground gradient — but the top of its own line box is still mid-gradient, and
+// the dirt dashes cross it, so the worst backdrop it has is not the fill at all
+// but a dash at ≈`#979491`. That is where 0.75 fails (≈3.9:1) and 0.9 clears the
+// 4.5:1 AA floor for this line's `text-sm`/`sm:text-base` (≈5.1:1; ≈6.8:1 on the
+// bare fill and ≈10.1:1 over the below-fold section's far end). Re-check both
+// once the ground inks, `GROUND_FILL_ALPHA`, `GROUND_TEXTURE_ALPHA` or `heroBg`
+// move, since the ratio is set against that band, not the sky.
+const linkOpacity = size === "ground" ? 0.9 : 0.75;
 ---
 
 <a
 	href="#rsvp"
 	class={linkClass}
-	style={`color: ${theme.heroText}; opacity: 0.75;`}
+	style={`color: ${theme.heroText}; opacity: ${linkOpacity};`}
 >
 	<ChevronDown size={16} class={chevronClass} aria-hidden="true" />
 	<span class="underline underline-offset-4">RSVP by {rsvpBy}</span>

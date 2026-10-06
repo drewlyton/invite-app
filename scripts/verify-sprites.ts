@@ -7,8 +7,8 @@
  * every assertion printed with its evidence, non-zero exit if a required
  * assertion fails. It checks the invariants the image pipeline depends on — a
  * complete pose/frame manifest, every frame present on disk as a transparent
- * PNG with its background removed, and the contain/bottom-centre geometry of
- * `drawPlayerFrame`.
+ * PNG with its background removed, no frame on disk that the manifest does not
+ * reference, and the contain/bottom-centre geometry of `drawPlayerFrame`.
  */
 
 import fs from "node:fs";
@@ -28,7 +28,10 @@ type Assertion = { name: string; pass: boolean; detail: string };
 
 const POSES: readonly Pose[] = ["idle", "push", "ride", "jump"];
 const EXPECTED_FRAMES: Record<Pose, number> = {
-	idle: 2,
+	// One frame: the idle pose is held still. It used to alternate with a second
+	// frame, which read as a twitch at the size the sprite renders; see `step` in
+	// `src/lib/runner.ts` and `ROLE_FRAMES` in `scripts/build-sprites.ts`.
+	idle: 1,
 	push: 1,
 	ride: 1,
 	jump: 3,
@@ -92,12 +95,26 @@ async function frameFilesTest(): Promise<Assertion> {
 			);
 		}
 	}
+
+	// The generator wipes the frames directory before it writes, so what is served
+	// is exactly the manifest and no more. Anything else on disk is a frame that
+	// ships without a pose referencing it — the idle pose's second frame was one —
+	// which no other check here would catch, because every check so far walks the
+	// manifest rather than the directory.
+	const onDisk = fs
+		.readdirSync(path.join(ROOT, "public/runner/player"))
+		.filter((name) => name.endsWith(".png"));
+	for (const name of onDisk) {
+		if (!validated.has(`/runner/player/${name}`)) {
+			problems.push(`${name}: on disk but not referenced by the manifest`);
+		}
+	}
 	return {
 		name: "2. Frame files",
 		pass: problems.length === 0,
 		detail: problems.length
 			? problems.join("; ")
-			: `${validated.size} transparent native-resolution PNGs, each validated once (a role may be shared by two poses) (${lines.join(", ")}).`,
+			: `${validated.size} transparent native-resolution PNGs, each validated once (a role may be shared by two poses), and ${onDisk.length} files on disk, all referenced (${lines.join(", ")}).`,
 	};
 }
 
