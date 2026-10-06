@@ -5,19 +5,24 @@
  *
  * Mirrors the shape of scripts/verify-runner.ts: plain Node, no test runner,
  * every assertion printed with its evidence, non-zero exit if a required
- * assertion fails. It checks the invariants the blit path depends on — an
- * exact 16x22 grid per bitmap, palette coverage, frame counts — plus the
- * batching contract of `drawBitmap` itself.
+ * assertion fails. It checks the invariants the image pipeline depends on — a
+ * complete pose/frame manifest, every frame present on disk as a transparent
+ * PNG with its background removed, and the contain/bottom-centre geometry of
+ * `drawPlayerFrame`.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import type { Pose } from "../src/lib/runner.ts";
 import {
-	drawBitmap,
-	PLAYER_PALETTE,
-	PLAYER_SPRITE_HEIGHT,
-	PLAYER_SPRITE_WIDTH,
-	PLAYER_SPRITES,
+	drawPlayerFrame,
+	PLAYER_FRAMES,
+	type SpriteImage,
 } from "../src/lib/runner-sprites.ts";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 type Assertion = { name: string; pass: boolean; detail: string };
 
@@ -33,151 +38,134 @@ const EXPECTED_FRAMES: Record<Pose, number> = {
 // --- 1. pose + frame inventory ---------------------------------------------
 
 function inventoryTest(): Assertion {
-	const missing = POSES.filter((pose) => PLAYER_SPRITES[pose] === undefined);
-	const extra = Object.keys(PLAYER_SPRITES).filter(
+	const missing = POSES.filter((pose) => PLAYER_FRAMES[pose] === undefined);
+	const extra = Object.keys(PLAYER_FRAMES).filter(
 		(key) => !POSES.includes(key as Pose),
 	);
 	const wrongCounts = POSES.filter(
-		(pose) => PLAYER_SPRITES[pose]?.length !== EXPECTED_FRAMES[pose],
+		(pose) => PLAYER_FRAMES[pose]?.length !== EXPECTED_FRAMES[pose],
 	);
 	const pass =
 		missing.length === 0 && extra.length === 0 && wrongCounts.length === 0;
 	return {
 		name: "1. Pose and frame inventory",
 		pass,
-		detail: `poses ${POSES.join(", ")}; missing ${missing.length ? missing.join(", ") : "none"}; unexpected ${extra.length ? extra.join(", ") : "none"}; frames ${POSES.map((p) => `${p}=${PLAYER_SPRITES[p]?.length ?? 0}(want ${EXPECTED_FRAMES[p]})`).join(", ")}.`,
+		detail: `poses ${POSES.join(", ")}; missing ${missing.length ? missing.join(", ") : "none"}; unexpected ${extra.length ? extra.join(", ") : "none"}; frames ${POSES.map((p) => `${p}=${PLAYER_FRAMES[p]?.length ?? 0}(want ${EXPECTED_FRAMES[p]})`).join(", ")}.`,
 	};
 }
 
-// --- 2. bitmap dimensions ---------------------------------------------------
+// --- 2. frames on disk ------------------------------------------------------
 
-function sizeTest(): Assertion {
+async function frameFilesTest(): Promise<Assertion> {
 	const problems: string[] = [];
-	let cells = 0;
-	let transparent = 0;
+	const seen = new Set<string>();
+	const lines: string[] = [];
 	for (const pose of POSES) {
-		PLAYER_SPRITES[pose]?.forEach((bitmap, index) => {
-			const label = `${pose}[${index}]`;
-			if (bitmap.length !== PLAYER_SPRITE_HEIGHT) {
-				problems.push(
-					`${label}: ${bitmap.length} rows (want ${PLAYER_SPRITE_HEIGHT})`,
-				);
+		for (const url of PLAYER_FRAMES[pose] ?? []) {
+			if (seen.has(url)) {
+				problems.push(`${url}: duplicated across poses`);
+				continue;
 			}
-			bitmap.forEach((row, y) => {
-				cells++;
-				if (row.length !== PLAYER_SPRITE_WIDTH) {
-					problems.push(
-						`${label} row ${y}: ${row.length} cols (want ${PLAYER_SPRITE_WIDTH})`,
-					);
-				}
-				for (const ch of row) if (ch === ".") transparent++;
-			});
-		});
+			seen.add(url);
+			if (!url.startsWith("/runner/player/")) {
+				problems.push(`${url}: outside /runner/player/`);
+				continue;
+			}
+			const file = path.join(ROOT, "public", url);
+			if (!fs.existsSync(file)) {
+				problems.push(`${url}: missing file ${path.relative(ROOT, file)}`);
+				continue;
+			}
+			const meta = await sharp(file).metadata();
+			if (meta.format !== "png") problems.push(`${url}: not a PNG`);
+			if (!meta.hasAlpha) problems.push(`${url}: no alpha channel`);
+			if (!meta.width || !meta.height) {
+				problems.push(`${url}: zero size`);
+				continue;
+			}
+			// Background removal leaves fully transparent pixels around opaque
+			// art; a frame that is entirely opaque still has its sheet background.
+			const stats = await sharp(file).stats();
+			const alpha = stats.channels[3];
+			if (alpha.min !== 0) problems.push(`${url}: no transparent pixels`);
+			if (alpha.max !== 255) problems.push(`${url}: no opaque pixels`);
+			lines.push(
+				`${path.basename(url)} ${meta.width}x${meta.height} a[${alpha.min}-${alpha.max}]`,
+			);
+		}
 	}
 	return {
-		name: "2. Bitmap dimensions",
+		name: "2. Frame files",
 		pass: problems.length === 0,
 		detail: problems.length
 			? problems.join("; ")
-			: `${POSES.length} poses, every bitmap exactly ${PLAYER_SPRITE_WIDTH}x${PLAYER_SPRITE_HEIGHT} (${cells} cells, ${transparent} transparent).`,
+			: `${seen.size} transparent native-resolution PNGs, distinct per pose (${lines.join(", ")}).`,
 	};
 }
 
-// --- 3. palette coverage ----------------------------------------------------
+// --- 3. drawPlayerFrame geometry -------------------------------------------
 
-function paletteTest(): Assertion {
-	const unknown = new Map<string, string[]>();
-	for (const pose of POSES) {
-		PLAYER_SPRITES[pose]?.forEach((bitmap, index) => {
-			bitmap.forEach((row, y) => {
-				for (const ch of row) {
-					if (ch === "." || PLAYER_PALETTE[ch] !== undefined) continue;
-					const list = unknown.get(ch) ?? [];
-					list.push(`${pose}[${index}] row ${y}`);
-					unknown.set(ch, list);
-				}
-			});
-		});
-	}
-	const badColours = Object.entries(PLAYER_PALETTE).filter(
-		([, value]) => !/^#[0-9a-f]{6}$/i.test(value),
-	);
-	const pass = unknown.size === 0 && badColours.length === 0;
-	const used = new Set<string>();
-	for (const pose of POSES) {
-		for (const bitmap of PLAYER_SPRITES[pose] ?? []) {
-			for (const row of bitmap) {
-				for (const ch of row) if (ch !== ".") used.add(ch);
-			}
-		}
-	}
-	return {
-		name: "3. Palette coverage",
-		pass,
-		detail: pass
-			? `every non-'.' character is a palette key; ${used.size}/${Object.keys(PLAYER_PALETTE).length} keys used (${[...used].sort().join("")}); all values are #rrggbb.`
-			: `unknown characters: ${[...unknown.entries()].map(([ch, where]) => `'${ch}' in ${where.join(", ")}`).join("; ") || "none"}; malformed colours: ${badColours.map(([k, v]) => `${k}=${v}`).join(", ") || "none"}.`,
-	};
-}
+let drawArgs: [unknown, number, number, number, number] | null = null;
+const ctx = {
+	drawImage(
+		image: unknown,
+		dx: number,
+		dy: number,
+		dw: number,
+		dh: number,
+	): void {
+		drawArgs = [image, dx, dy, dw, dh];
+	},
+} as unknown as CanvasRenderingContext2D;
 
-// --- 4. blit batching -------------------------------------------------------
+const close = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
 
-function blitTest(): Assertion {
-	let style = "";
-	let pending = 0;
-	let began = 0;
-	const batches: { colour: string; rects: number }[] = [];
-	const allRects: [number, number, number, number][] = [];
-	const ctx = {
-		set fillStyle(value: string) {
-			style = value;
-		},
-		get fillStyle(): string {
-			return style;
-		},
-		beginPath(): void {
-			began++;
-		},
-		rect(x: number, y: number, w: number, h: number): void {
-			pending++;
-			allRects.push([x, y, w, h]);
-		},
-		fill(): void {
-			batches.push({ colour: style, rects: pending });
-			pending = 0;
-		},
-	} as unknown as CanvasRenderingContext2D;
-
-	const bitmap = PLAYER_SPRITES.ride[0];
+function geometryTest(): Assertion {
 	const x = 8;
 	const y = 11;
 	const px = 2.5;
-	drawBitmap(ctx, bitmap, PLAYER_PALETTE, x, y, px);
+	const problems: string[] = [];
 
-	const expected = new Set<string>();
-	const perColour = new Map<string, number>();
-	bitmap.forEach((row, r) => {
-		for (let c = 0; c < row.length; c++) {
-			const colour = PLAYER_PALETTE[row[c]];
-			if (colour === undefined) continue;
-			expected.add(`${(x + c) * px},${(y + r) * px},${px},${px}`);
-			perColour.set(colour, (perColour.get(colour) ?? 0) + 1);
+	// A tall image is height-bound; a wide one is width-bound. Both must end
+	// bottom-aligned on the box and centred horizontally.
+	const cases: { image: SpriteImage; w: number }[] = [
+		{ image: { width: 100, height: 200 } as SpriteImage, w: 11 },
+		{ image: { width: 200, height: 100 } as SpriteImage, w: 16 },
+	];
+	const boxRight = (x + 16) * px;
+	const boxBottom = (y + 22) * px;
+	for (const { image, w } of cases) {
+		drawArgs = null;
+		drawPlayerFrame(ctx, image, x, y, px);
+		// The cast restores the union: TS cannot see the mutation the mock ctx's
+		// `drawImage` performs inside `drawPlayerFrame`.
+		const args = drawArgs as [unknown, number, number, number, number] | null;
+		if (!args) {
+			problems.push(`${image.width}x${image.height}: drawImage not called`);
+			continue;
 		}
-	});
-	const actual = new Set(allRects.map((r) => r.join(",")));
-	const rectsMatch =
-		allRects.length === expected.size &&
-		[...expected].every((key) => actual.has(key));
-	const fillsMatch =
-		batches.length === perColour.size &&
-		began === perColour.size &&
-		new Set(batches.map((b) => b.colour)).size === perColour.size &&
-		batches.every((b) => perColour.get(b.colour) === b.rects);
-	const pass = rectsMatch && fillsMatch;
+		const [, dx, dy, dw, dh] = args;
+		if (!close(dw, w * px)) problems.push(`${image.width}x${image.height}: dw`);
+		if (!close(dx + dw / 2, (x + 8) * px)) {
+			problems.push(`${image.width}x${image.height}: not centred`);
+		}
+		if (!close(dy + dh, boxBottom)) {
+			problems.push(`${image.width}x${image.height}: not bottom-aligned`);
+		}
+		// Contain: the fitted box never exceeds the world box in either axis.
+		if (dw > 16 * px + 1e-9 || dh > 22 * px + 1e-9) {
+			problems.push(`${image.width}x${image.height}: larger than the box`);
+		}
+		if (dx < x * px - 1e-9 || dx + dw > boxRight + 1e-9) {
+			problems.push(`${image.width}x${image.height}: horizontally outside`);
+		}
+	}
 	return {
-		name: "4. drawBitmap batching",
-		pass,
-		detail: `ride[0] at (${x},${y}) scale ${px}: ${allRects.length} rects (want ${expected.size}, exact coords ${rectsMatch}); ${batches.length} fill()/${began} beginPath() for ${perColour.size} distinct colours; rects per colour ${fillsMatch ? "match" : "MISMATCH"} (${batches.map((b) => `${b.colour}:${b.rects}`).join(" ")}).`,
+		name: "3. drawPlayerFrame geometry",
+		pass: problems.length === 0,
+		detail: problems.length
+			? problems.join("; ")
+			: `100x200 -> 11x22 and 200x100 -> 16x8 world units, both bottom-centre contained in the 16x22 box at (${x},${y}) scale ${px}.`,
 	};
 }
 
@@ -185,9 +173,8 @@ function blitTest(): Assertion {
 
 const assertions: Assertion[] = [
 	inventoryTest(),
-	sizeTest(),
-	paletteTest(),
-	blitTest(),
+	await frameFilesTest(),
+	geometryTest(),
 ];
 const allPass = assertions.every((a) => a.pass);
 
@@ -197,20 +184,10 @@ for (const a of assertions) {
 	console.log(`      ${a.detail}\n`);
 }
 
-console.log("Sprite inventory");
+console.log("Sprite manifest");
 for (const pose of POSES) {
-	const sizes = (PLAYER_SPRITES[pose] ?? []).map(
-		(bitmap, index) => `${index}:${bitmap[0].length}x${bitmap.length}`,
-	);
-	console.log(
-		`  ${pose}: ${PLAYER_SPRITES[pose]?.length ?? 0} frame(s) [${sizes.join(", ")}]`,
-	);
+	console.log(`  ${pose}: ${(PLAYER_FRAMES[pose] ?? []).join(", ")}`);
 }
-console.log(
-	`  palette: ${Object.entries(PLAYER_PALETTE)
-		.map(([k, v]) => `${k}=${v}`)
-		.join(" ")}`,
-);
 
 console.log(`\nOverall: ${allPass ? "PASS" : "FAIL"}`);
 process.exitCode = allPass ? 0 : 1;

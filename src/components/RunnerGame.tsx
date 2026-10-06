@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
 	createGame,
 	type Game,
+	type Pose,
 	resize,
 	restart,
 	start,
@@ -16,11 +17,7 @@ import {
 	GROUND_TEXTURE_TILE_WIDTH,
 	resolveGroundColor,
 } from "../lib/runner-ground";
-import {
-	drawBitmap,
-	PLAYER_PALETTE,
-	PLAYER_SPRITES,
-} from "../lib/runner-sprites";
+import { drawPlayerFrame, PLAYER_FRAMES } from "../lib/runner-sprites";
 import { deadStatus, IDLE_STATUS, runningStatus } from "../lib/runner-status";
 import type { ScoreEntry } from "../lib/scores";
 import Leaderboard, { type BoardState } from "./Leaderboard";
@@ -144,6 +141,29 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 		if (!band || !canvas) return;
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
+
+		// The player art is much larger than the 16x22 world box it is drawn into,
+		// so enable the high-quality downscale path. The ground and obstacles are
+		// vector rects and are unaffected by these settings.
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = "high";
+
+		// Player frames, loaded once for the life of the island. A frame that is
+		// not decoded yet is skipped by `draw`; the rAF loop keeps running, so the
+		// next frame picks it up. Held in a closure, not React state, so playing
+		// never re-renders the component.
+		const playerImages: Partial<Record<Pose, HTMLImageElement[]>> = {};
+		for (const [pose, urls] of Object.entries(PLAYER_FRAMES) as [
+			Pose,
+			readonly string[],
+		][]) {
+			playerImages[pose] = urls.map((url) => {
+				const image = new Image();
+				image.decoding = "async";
+				image.src = url;
+				return image;
+			});
+		}
 
 		// Read the media query inside the effect: the component is still
 		// server-rendered, where matchMedia does not exist.
@@ -374,20 +394,17 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			}
 			ctx.globalAlpha = 1;
 
-			// Player: a hand-authored pixel sprite. `drawBitmap` groups the bitmap's
-			// cells by colour and emits one batched path per colour, so the whole
-			// character costs a handful of fills rather than one per pixel. The modulo
-			// lets a single-frame pose (jump, dead) hold frame 0 while the two-frame
-			// poses cycle.
-			const frames = PLAYER_SPRITES[s.player.pose];
-			drawBitmap(
-				ctx,
-				frames[s.player.frame % frames.length],
-				PLAYER_PALETTE,
-				s.player.x,
-				s.player.y,
-				px,
-			);
+			// Player: the cut sprite sheet, drawn at its own resolution and scaled
+			// into the 16x22 world box. Images load asynchronously, so a frame is
+			// skipped until its image is decoded; the rAF loop keeps running, so the
+			// next frame picks it up. Smoothing is on (set once below) because the
+			// source is much larger than the box.
+			const poseFrames = PLAYER_FRAMES[s.player.pose];
+			const image =
+				playerImages[s.player.pose]?.[s.player.frame % poseFrames.length];
+			if (image?.complete && image.naturalWidth > 0) {
+				drawPlayerFrame(ctx, image, s.player.x, s.player.y, px);
+			}
 		};
 
 		const frame = (time: number): void => {
