@@ -457,11 +457,11 @@ than hard.
 ## Sprites
 
 The player art is a set of transparent PNG frames under `public/runner/player/`,
-one file per pose frame, served at `/runner/player/<pose>-<n>.png`. They are
-kept **at the sheet's own resolution** — the art is not downsampled — and scaled
-into the player's 16×22 world box at blit time. `PLAYER_FRAMES` maps each pose
-to its frame URLs in play order; the simulation indexes it by
-`player.frame % frames.length`, so a one-frame pose (jump, dead) holds frame 0.
+served at `/runner/player/<role>.png`. They are kept **at the sheet's own
+resolution** — the art is not downsampled — and scaled into the player's 16×22
+world box at blit time. `PLAYER_FRAMES` maps each pose to its frame URLs in play
+order; the simulation indexes it by `player.frame % frames.length`, so a
+single-frame pose holds frame 0.
 
 ```ts
 export const PLAYER_SPRITE_WIDTH = 16;                                 // world box
@@ -478,34 +478,40 @@ anchoring maths at the call site.
 
 **The sprite is not downsampled.** An earlier revision quantised each frame to a
 16×22 palette bitmap in code; that is why the character read as a blob. The
-frames now keep their native resolution (≈150–225 × 249–278 px), and the canvas
+frames now keep their native resolution (≈167–225 × 249–278 px), and the canvas
 performs a high-quality downscale at blit time. The source detail survives at
 the game's ~30×42 CSS px footprint far better than a 16×22 quantisation did.
 
 **The manifest is generated.** `scripts/build-sprites.ts` loads
 `src/assets/runner/skateboard-sheet.jpg`, removes the sheet's light-grey
 background with a flood fill seeded from the image border (so light pixels
-*inside* the character survive), finds the eight frames by geometry, writes each
-as a trimmed, transparent PNG to `public/runner/player/`, and splices the
-`PLAYER_FRAMES` manifest into the marked block in `runner-sprites.ts`. The frame
-counts below are part of the contract and are asserted by
-`scripts/verify-sprites.ts`, which also checks that every URL resolves to a PNG
-with an alpha channel that has both transparent and opaque pixels (i.e. the
-background really was removed).
+*inside* the character survive), finds the eight frames by geometry, writes the
+roles the game uses as trimmed, transparent PNGs to `public/runner/player/`, and
+splices the `PLAYER_FRAMES` manifest into the marked block in
+`runner-sprites.ts`. `scripts/verify-sprites.ts` asserts the frame counts and
+that every URL resolves to a PNG with an alpha channel that has both transparent
+and opaque pixels (i.e. the background really was removed).
 
-The `POSE_FRAMES` mapping lives in the generator. The sheet's top row is two
-idle frames then two board-holding frames; the bottom row is a crouch, the jump
-and two ride frames. `push` uses the held board then the crouched push-off, so
-the intro narrates stand → step on → ride. The sheet has **no crash art**, so
-the spare standing frame stands in for `dead`.
+### Animation flow
 
-| Pose | Frames | Sheet frames | Used for |
+The run reads idle → push → ride → jump → ride, with dead on a collision:
+
+| Pose | Frames | Role | Used for |
 | --- | --- | --- | --- |
-| `idle` | 2 | 0, 1 | neutral bob in place; board held vertically beside the body |
-| `push` | 2 | 3, 4 | brief intro when a run starts; board held, then the crouched push-off |
-| `ride` | 2 | 6, 7 | the default grounded pose during play |
-| `jump` | 1 | 5 | airborne, board kicked up under the feet |
-| `dead` | 1 | 2 | run over; standing with the board (the sheet's spare pose) |
+| `idle` | 2 | `idle-0`, `idle-1` | two-frame bob in place; board held vertically beside the body |
+| `push` | 1 | `crouch` | holds for `TUNING.pushDuration` (a few seconds) at the start of a run |
+| `ride` | 1 | `ride-stand` | the static, both-feet-on-the-board pose for the rest of the run |
+| `jump` | 3 | `crouch`, `air`, `crouch` | takeoff crouch, airborne, landing crouch |
+| `dead` | 1 | `hold-front` | run over; the board held in front of the character |
+
+`push`, `ride` and `dead` are static single frames. `jump` is the only
+phase-driven pose: `runner.ts` picks frame 0 while the takeoff crouch
+(`TUNING.jumpCrouchDuration`) is running, frame 1 once airborne, and frame 2 for
+the landing crouch (`TUNING.landCrouchDuration`) after touchdown, then the run
+settles back into `ride`. The crouch role is shared by `push` and `jump`, so it
+is cut once and the manifest reuses the URL. The sheet's board-leaning pose (2)
+and tilted carve (7) are unused, and the sheet has **no crash art**, so `dead`
+uses the board-held-in-front pose.
 
 Obstacle art (the ground/flying kinds) is still unbuilt and drawn as rectangles;
 the ground texture and dashes are the shared `GROUND_TEXTURE` list.
@@ -1039,7 +1045,7 @@ manifest, blit path and verification scripts are complete, and the frames are
 generated from `src/assets/runner/skateboard-sheet.jpg` by
 `scripts/build-sprites.ts`. Re-run the generator after changing the sheet; the
 generated block is marked and must not be hand-edited. The sheet has no crash
-art, so `dead` uses the spare standing frame (see [Sprites](#sprites)).
+art, so `dead` uses the board-held-in-front pose (see [Sprites](#sprites)).
 - Obstacle art is also placeholder rectangles.
 
 ## Verification

@@ -120,11 +120,18 @@ export const TUNING = {
 	maxDt: 0.05,
 
 	// Animation.
+	// The idle bob's frame period.
 	frameDuration: 0.1,
-	// Length of the push intro at the start of a run, before the player settles
-	// into the ride pose. Presentation only: it never touches physics, so it can
-	// be retuned without affecting fairness.
-	pushDuration: 0.7,
+	// How long a run opens in the push pose before settling into the ride pose.
+	// Presentation only: it never touches physics, so it can be retuned without
+	// affecting fairness.
+	pushDuration: 2.5,
+	// The jump's takeoff crouch: how long the crouch frame holds after leaving the
+	// ground. Presentation only.
+	jumpCrouchDuration: 0.08,
+	// The jump's landing crouch: how long the crouch frame holds after touchdown.
+	// Presentation only.
+	landCrouchDuration: 0.12,
 } as const;
 
 /** Full tuning shape, with plain `number` values so debug knobs can override. */
@@ -201,6 +208,10 @@ type PlayerState = {
 	pose: Pose;
 	frame: number;
 	frameTime: number;
+	/** Seconds airborne on the current jump; 0 when grounded. */
+	airTime: number;
+	/** Seconds grounded since the last touchdown; past the crouch before the first jump. */
+	landTime: number;
 	/** Seconds into the current run. Drives the push -> ride transition. */
 	runTime: number;
 	/** Previous frame's jump input, so a held key is one jump, not bunny-hopping. */
@@ -362,6 +373,9 @@ function makePlayer(groundY: number, playerX: number, pose: Pose): PlayerState {
 		pose,
 		frame: 0,
 		frameTime: 0,
+		airTime: 0,
+		// Already past the landing crouch, so a fresh run does not open on it.
+		landTime: TUNING.landCrouchDuration,
 		runTime: 0,
 		jumpHeld: false,
 	};
@@ -408,12 +422,13 @@ function advanceFrame(
 	frame: number,
 	frameTime: number,
 	dt: number,
+	count: number,
 ): { frame: number; frameTime: number } {
 	let time = frameTime + dt;
 	let next = frame;
 	while (time >= TUNING.frameDuration) {
 		time -= TUNING.frameDuration;
-		next = (next + 1) % 2;
+		next = (next + 1) % count;
 	}
 	return { frame: next, frameTime: time };
 }
@@ -553,28 +568,39 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 	let vy = p.vy;
 	let y = p.y;
 	let airborne = p.airborne;
+	let airTime = p.airTime;
+	let landTime = p.landTime;
 
 	if (jumpPressed) {
 		vy = g.tuning.jumpVelocity;
 		airborne = true;
+		airTime = 0;
+		landTime = 0;
 	}
 
 	if (airborne) {
 		vy += g.tuning.gravity * dt;
 		y += vy * dt;
+		airTime += dt;
 		const groundTop = g.groundY - TUNING.playerHeight;
 		if (y >= groundTop) {
 			y = groundTop;
 			vy = 0;
 			airborne = false;
+			airTime = 0;
+			landTime = 0;
 		}
 	} else {
 		y = g.groundY - TUNING.playerHeight;
+		landTime += dt;
 	}
 
 	// Only a run advances the run clock; a dead player's clock stops with it.
 	const runTime = running ? p.runTime + dt : p.runTime;
 
+	// Pose order matters: death beats everything, then the run phases. The
+	// landing crouch holds `jump` briefly after touchdown, so a jump reads as
+	// crouch -> airborne -> crouch instead of snapping straight back to ride.
 	let pose: Pose;
 	if (g.phase === "dead") {
 		pose = "dead";
@@ -582,17 +608,26 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		pose = "idle";
 	} else if (airborne) {
 		pose = "jump";
+	} else if (landTime < g.tuning.landCrouchDuration) {
+		pose = "jump";
 	} else if (runTime < g.tuning.pushDuration) {
 		pose = "push";
 	} else {
 		pose = "ride";
 	}
 
-	// push/ride/idle cycle two frames; jump and dead hold their single frame.
-	const animated =
-		pose === "idle" || pose === "push" || pose === "ride"
-			? advanceFrame(p.frame, p.frameTime, dt)
-			: { frame: 0, frameTime: 0 };
+	// Frame selection is per pose. Only `idle` is a timed cycle (its two-frame
+	// bob); `jump` picks by phase — 0 is the takeoff crouch, 1 the airborne
+	// frame, 2 the landing crouch — and push/ride/dead hold frame 0.
+	let frame = 0;
+	let frameTime = 0;
+	if (pose === "idle") {
+		const animated = advanceFrame(p.frame, p.frameTime, dt, 2);
+		frame = animated.frame;
+		frameTime = animated.frameTime;
+	} else if (pose === "jump") {
+		frame = airborne ? (airTime < g.tuning.jumpCrouchDuration ? 0 : 1) : 2;
+	}
 
 	return {
 		x: g.playerX,
@@ -600,8 +635,10 @@ function stepPlayer(g: GameState, dt: number, input: Input): PlayerState {
 		vy,
 		airborne,
 		pose,
-		frame: animated.frame,
-		frameTime: animated.frameTime,
+		frame,
+		frameTime,
+		airTime,
+		landTime,
 		runTime,
 		jumpHeld: input.jump,
 	};
@@ -626,7 +663,12 @@ export function step(game: Game, dt: number, input: Input): Game {
 		// place while the visitor reads the invite. No distance, no obstacles, no
 		// spawner — just the two-frame cycle, so the render loop can keep drawing
 		// the same scene. The input is deliberately ignored.
-		const animated = advanceFrame(g.player.frame, g.player.frameTime, stepDt);
+		const animated = advanceFrame(
+			g.player.frame,
+			g.player.frameTime,
+			stepDt,
+			2,
+		);
 		const idleState: GameState = {
 			...g,
 			player: {
@@ -646,7 +688,7 @@ export function step(game: Game, dt: number, input: Input): Game {
 	const player = stepPlayer(g, stepDt, input);
 
 	let obstacles: ObstacleState[] = g.obstacles.map((o) => {
-		const animated = advanceFrame(o.frame, o.frameTime, stepDt);
+		const animated = advanceFrame(o.frame, o.frameTime, stepDt, 2);
 		return {
 			...o,
 			x: o.x - move,

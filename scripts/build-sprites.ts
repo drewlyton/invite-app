@@ -21,10 +21,11 @@
  *   4. splices the `PLAYER_FRAMES` URL manifest into `src/lib/runner-sprites.ts`
  *      between the `generated:start/end` markers.
  *
- * `POSE_FRAMES` is the pose -> sheet-frame mapping. The sheet supplies both
- * idle frames, a push pair (board held in front, then the crouched push-off),
- * the jump, both ride frames and one spare standing frame used for `dead`; the
- * sheet has no crash art.
+ * `ROLE_FRAMES` names the sheet frames the game uses and `POSE_FRAMES` maps
+ * each pose to them. A role can serve more than one pose — the crouch is both
+ * the push pose and the jump's takeoff/landing frame — so each role is written
+ * once and the manifest reuses its URL. The sheet has no crash art, so the
+ * board-held-in-front pose stands in for `dead`.
  *
  * Re-run after editing the sheet; the module's helpers and docs are untouched.
  */
@@ -48,18 +49,29 @@ const MIN_BAND_HEIGHT = 100;
 const EXPECTED_FRAMES = 8;
 
 /**
- * Pose -> sheet frames, in reading order. The sheet's top row is the idle bob
- * pair followed by two board-holding frames; the bottom row is the crouch, the
- * jump and the two ride frames. `push` uses the held board then the crouched
- * push-off so the intro narrates stand -> step on -> ride; the spare standing
- * frame stands in for the absent crash art.
+ * Sheet frame index -> the role it plays. Frames not listed are unused: the
+ * board-leaning pose (2) and the tilted carve (7).
  */
-const POSE_FRAMES: Readonly<Record<string, readonly number[]>> = {
-	idle: [0, 1],
-	push: [3, 4],
-	ride: [6, 7],
-	jump: [5],
-	dead: [2],
+const ROLE_FRAMES: Readonly<Record<string, number>> = {
+	"idle-0": 0,
+	"idle-1": 1,
+	"hold-front": 3,
+	crouch: 4,
+	air: 5,
+	"ride-stand": 6,
+};
+
+/**
+ * Pose -> roles, in play order. `jump` is a three-frame animation: crouch on
+ * takeoff, airborne, crouch on landing; the engine picks the frame by phase, so
+ * the crouch role appears twice. `push`, `ride` and `dead` are single frames.
+ */
+const POSE_FRAMES: Readonly<Record<string, readonly string[]>> = {
+	idle: ["idle-0", "idle-1"],
+	push: ["crouch"],
+	ride: ["ride-stand"],
+	jump: ["crouch", "air", "crouch"],
+	dead: ["hold-front"],
 };
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -188,35 +200,52 @@ function cropRGBA(box: Box): Buffer {
 	return out;
 }
 
+// Start clean so the served directory always matches the manifest exactly.
+fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
 fs.mkdirSync(FRAMES_DIR, { recursive: true });
 
-/** pose -> frame URL list, built as the files are written. */
+/** Role -> cut frame URL, written once per role. */
+const urlByRole = new Map<string, string>();
+for (const [role, index] of Object.entries(ROLE_FRAMES)) {
+	const box = frames[index];
+	const name = `${role}.png`;
+	const url = `/runner/player/${name}`;
+	await sharp(cropRGBA(box), {
+		raw: {
+			width: box.x1 - box.x0 + 1,
+			height: box.y1 - box.y0 + 1,
+			channels: 4,
+		},
+	})
+		// Palette-quantised: the art is a single greyscale ramp, so 64 colours
+		// hold it at a fraction of the full RGBA size. Resolution is untouched.
+		.png({ compressionLevel: 9, palette: true, colors: 64 })
+		.toFile(path.join(FRAMES_DIR, name));
+	urlByRole.set(role, url);
+}
+
+/** Pose -> frame URL list, reusing the shared roles' URLs. */
 const manifest: Record<string, string[]> = {};
-for (const [pose, indices] of Object.entries(POSE_FRAMES)) {
-	manifest[pose] = [];
-	for (const [n, index] of indices.entries()) {
-		const box = frames[index];
-		const name = `${pose}-${n}.png`;
-		const url = `/runner/player/${name}`;
-		await sharp(cropRGBA(box), {
-			raw: {
-				width: box.x1 - box.x0 + 1,
-				height: box.y1 - box.y0 + 1,
-				channels: 4,
-			},
-		})
-			// Palette-quantised: the art is a single greyscale ramp, so 64 colours
-			// hold it at a fraction of the full RGBA size. Resolution is untouched.
-			.png({ compressionLevel: 9, palette: true, colors: 64 })
-			.toFile(path.join(FRAMES_DIR, name));
-		manifest[pose].push(url);
-	}
+for (const [pose, roles] of Object.entries(POSE_FRAMES)) {
+	manifest[pose] = roles.map((role) => {
+		const url = urlByRole.get(role);
+		if (!url) throw new Error(`build-sprites: unknown role "${role}"`);
+		return url;
+	});
 }
 
 // --- splice into the module -------------------------------------------------
 
-function urlList(urls: string[]): string {
-	return urls.map((url) => `"${url}"`).join(", ");
+/**
+ * Emit one manifest entry the way Biome would: a single line when it fits the
+ * 80-column budget, otherwise one URL per line. A tab measures as its two-space
+ * indent, hence the `2 +`.
+ */
+function frameArray(pose: string, urls: string[]): string {
+	const single = `${pose}: [${urls.map((url) => `"${url}"`).join(", ")}],`;
+	if (2 + single.length <= 80) return `\t${single}`;
+	const rows = urls.map((url) => `\t\t"${url}",`).join("\n");
+	return `\t${pose}: [\n${rows}\n\t],`;
 }
 
 const block = [
@@ -226,9 +255,7 @@ const block = [
 	"// sheet or the generator and re-run it.",
 	"",
 	"export const PLAYER_FRAMES: Readonly<Record<Pose, readonly string[]>> = {",
-	...Object.entries(manifest).map(
-		([pose, urls]) => `\t${pose}: [${urlList(urls)}],`,
-	),
+	...Object.entries(manifest).map(([pose, urls]) => frameArray(pose, urls)),
 	"};",
 	"// --- generated:end ---",
 ].join("\n");
@@ -248,9 +275,9 @@ fs.writeFileSync(SPRITES_TS, next);
 
 // --- report -----------------------------------------------------------------
 
-const total = Object.values(manifest).reduce((n, urls) => n + urls.length, 0);
+const files = Object.keys(ROLE_FRAMES).length;
 console.log(
-	`build-sprites: ${frames.length} frames detected, ${total} native-resolution PNGs ` +
-		`written to ${path.relative(ROOT, FRAMES_DIR)}, ${Object.keys(manifest).length} poses ` +
-		`spliced into ${path.relative(ROOT, SPRITES_TS)}.`,
+	`build-sprites: ${frames.length} frames detected, ${files} roles -> ${files} ` +
+		`native-resolution PNGs written to ${path.relative(ROOT, FRAMES_DIR)}, ` +
+		`${Object.keys(manifest).length} poses spliced into ${path.relative(ROOT, SPRITES_TS)}.`,
 );

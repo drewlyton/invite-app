@@ -29,9 +29,9 @@ type Assertion = { name: string; pass: boolean; detail: string };
 const POSES: readonly Pose[] = ["idle", "push", "ride", "jump", "dead"];
 const EXPECTED_FRAMES: Record<Pose, number> = {
 	idle: 2,
-	push: 2,
-	ride: 2,
-	jump: 1,
+	push: 1,
+	ride: 1,
+	jump: 3,
 	dead: 1,
 };
 
@@ -58,15 +58,14 @@ function inventoryTest(): Assertion {
 
 async function frameFilesTest(): Promise<Assertion> {
 	const problems: string[] = [];
-	const seen = new Set<string>();
+	const validated = new Set<string>();
 	const lines: string[] = [];
 	for (const pose of POSES) {
 		for (const url of PLAYER_FRAMES[pose] ?? []) {
-			if (seen.has(url)) {
-				problems.push(`${url}: duplicated across poses`);
-				continue;
-			}
-			seen.add(url);
+			// A role can serve two poses (the jump crouch reuses the push crouch),
+			// so each URL is validated once rather than being flagged as a dupe.
+			if (validated.has(url)) continue;
+			validated.add(url);
 			if (!url.startsWith("/runner/player/")) {
 				problems.push(`${url}: outside /runner/player/`);
 				continue;
@@ -99,7 +98,7 @@ async function frameFilesTest(): Promise<Assertion> {
 		pass: problems.length === 0,
 		detail: problems.length
 			? problems.join("; ")
-			: `${seen.size} transparent native-resolution PNGs, distinct per pose (${lines.join(", ")}).`,
+			: `${validated.size} transparent native-resolution PNGs, each validated once (a role may be shared by two poses) (${lines.join(", ")}).`,
 	};
 }
 
@@ -169,12 +168,29 @@ function geometryTest(): Assertion {
 	};
 }
 
+// --- 4. jump phases ---------------------------------------------------------
+
+function jumpShapeTest(): Assertion {
+	const jump = PLAYER_FRAMES.jump ?? [];
+	const crouchOnBothEnds = jump.length === 3 && jump[0] === jump[2];
+	const airInMiddle = jump.length === 3 && jump[1] !== jump[0];
+	const pass = crouchOnBothEnds && airInMiddle;
+	return {
+		name: "4. Jump phases",
+		pass,
+		detail: pass
+			? `jump = [takeoff crouch, airborne, landing crouch]; the ends share a frame and the middle differs.`
+			: `jump = [${jump.join(", ")}]: expected 3 frames with frame 0 === frame 2 and frame 1 different.`,
+	};
+}
+
 // --- run --------------------------------------------------------------------
 
 const assertions: Assertion[] = [
 	inventoryTest(),
 	await frameFilesTest(),
 	geometryTest(),
+	jumpShapeTest(),
 ];
 const allPass = assertions.every((a) => a.pass);
 

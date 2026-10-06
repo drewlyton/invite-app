@@ -41,10 +41,14 @@ export type SpriteImage = CanvasImageSource & {
 
 export const PLAYER_FRAMES: Readonly<Record<Pose, readonly string[]>> = {
 	idle: ["/runner/player/idle-0.png", "/runner/player/idle-1.png"],
-	push: ["/runner/player/push-0.png", "/runner/player/push-1.png"],
-	ride: ["/runner/player/ride-0.png", "/runner/player/ride-1.png"],
-	jump: ["/runner/player/jump-0.png"],
-	dead: ["/runner/player/dead-0.png"],
+	push: ["/runner/player/crouch.png"],
+	ride: ["/runner/player/ride-stand.png"],
+	jump: [
+		"/runner/player/crouch.png",
+		"/runner/player/air.png",
+		"/runner/player/crouch.png",
+	],
+	dead: ["/runner/player/hold-front.png"],
 };
 // --- generated:end ---
 
