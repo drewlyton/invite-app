@@ -103,3 +103,22 @@ export function resolveGroundColor(
 ): string | undefined {
 	return ground ?? color;
 }
+
+/**
+ * The dirt texture as a CSS `url(...)` for a DOM background, rebuilt from the
+ * same `GROUND_TEXTURE` list the canvas blits. A single tile sits at the origin,
+ * so the caller anchors it at the ground line and scales it with
+ * `background-size`. The SVG is percent-encoded and quoted with single quotes
+ * internally so the URL carries no raw `"`, `<`, `>` or `#`, and
+ * `shape-rendering="crispEdges"` keeps the dashes from being antialiased.
+ */
+export function groundTextureCssUrl(color: string): string {
+	const rects = GROUND_TEXTURE.map(
+		(dash) =>
+			`<rect x="${dash.x}" y="${dash.y}" width="${dash.w}" height="${GROUND_TEXTURE_DASH_HEIGHT}"/>`,
+	).join("");
+	const svg =
+		`<svg xmlns="http://www.w3.org/2000/svg" width="${GROUND_TEXTURE_TILE_WIDTH}" height="${GROUND_TEXTURE_TILE_HEIGHT}" shape-rendering="crispEdges">` +
+		`<g fill="${color}" fill-opacity="${GROUND_TEXTURE_ALPHA}">${rects}</g></svg>`;
+	return `url('data:image/svg+xml,${encodeURIComponent(svg)}')`;
+}

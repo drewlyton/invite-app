@@ -856,22 +856,30 @@ detailsBelowFold: boolean;   // required: true renders EventDetails after the he
 Set it on `game-night-light` (and leave `null` on `default`, `game-night`, and
 `birthday`). `Invite.astro` renders `{theme.runner && <RunnerGame client:load … />}`.
 
-**`client:load`, not `client:idle`, and the reason is visual rather than
-performance.** `idle` was the original choice, to keep the island off the critical
-path. But its cost turned out to be a *visible pop-in*: `client:idle` hydrates on
-`requestIdleCallback` with no `timeout` passed, so it fires genuinely after first
-paint — and because the band has **no server-rendered appearance whatsoever** (no
-background utility, and a `<canvas>` is always empty in HTML), the hero rendered
-with an empty strip where the ground and player should be. The invite text, stars,
-clouds, and the status line are all server-rendered and painted immediately, so the
-game visibly arrived late and the prompt sat over an empty band in the meantime.
+**`client:load`, plus a server-rendered placeholder in the band.** `client:idle`
+was the original choice, to keep the island off the critical path. But it produced
+a *visible pop-in*: it hydrates on `requestIdleCallback` with no `timeout` passed,
+so it fires genuinely after first paint, and the band used to have **no
+server-rendered appearance whatsoever** — an empty `<canvas>` in HTML — so the
+hero showed a bare strip where the ground and player should be while the invite
+text, stars, clouds and status line painted immediately.
 
-`client:load` hydrates as soon as the module loads, so the ground is drawn with the
-rest of the page. The island is small and its first draw is cheap, so the cost of
-competing with initial load is accepted. If that trade is ever revisited, note that
-the alternative to `client:load` is not "go back to `idle`" — it is "server-render a
-CSS approximation of the idle ground", which adds a second rendering path that has
-to stay pixel-consistent with the canvas.
+Two things remove that flash now. `client:load` hydrates as soon as the module
+loads, and the band **server-renders a CSS approximation of the idle scene** —
+the ground fill, its `GROUND_TEXTURE` grain and the dash strip, plus the idle
+sprite — which the browser paints with the rest of the hero. The island then keeps
+the canvas blank until every frame is decoded and drops the placeholder in the
+same turn as its first full draw (`sceneDrawn`), so the handover lands between two
+paints rather than flashing a partial scene.
+
+The approximation is a **second rendering path**, and that is its cost. It is kept
+honest by deriving every measurement from the same constants the canvas uses:
+`--band-h` on the band is the single source for the band height and for `--ps`,
+the live `pixelScale` written as CSS (`min(bandHeight / TARGET_WORLD_HEIGHT, 100vw
+/ MIN_WORLD_WIDTH)`, clamped), so the ground line, the dirt dashes and the player
+land exactly where `drawPlayerFrame` will put them. The one stand-in is `100vw`
+for the band width, which differs only by a scrollbar and only matters when the
+width term binds — narrow, and therefore scrollbar-less, viewports.
 
 The optional milestone lives in the theme, not the event frontmatter, so it needs
 no `content.config.ts` schema change. Score 30 + "Happy 30th!" is coupled to this

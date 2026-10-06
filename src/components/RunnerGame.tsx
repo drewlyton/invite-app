@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
 	createGame,
@@ -7,6 +8,7 @@ import {
 	restart,
 	start,
 	step,
+	TUNING,
 	view,
 } from "../lib/runner";
 import {
@@ -14,7 +16,9 @@ import {
 	GROUND_TEXTURE,
 	GROUND_TEXTURE_ALPHA,
 	GROUND_TEXTURE_DASH_HEIGHT,
+	GROUND_TEXTURE_TILE_HEIGHT,
 	GROUND_TEXTURE_TILE_WIDTH,
+	groundTextureCssUrl,
 	resolveGroundColor,
 } from "../lib/runner-ground";
 import { drawPlayerFrame, PLAYER_FRAMES } from "../lib/runner-sprites";
@@ -38,6 +42,27 @@ const MAX_FRAME_DT = 0.25;
 const INTERACTIVE_SELECTOR =
 	"a, button, input, select, textarea, [contenteditable]";
 
+/** Ground dash strip: one `GROUND_DASH_WIDTH`-unit dash every `GROUND_DASH_TILE` units. */
+const GROUND_DASH_TILE = 16;
+const GROUND_DASH_WIDTH = 6;
+
+/**
+ * The band's height as a CSS length, exposed as `--band-h` on the band. Single
+ * source for the band's own height and for the server-rendered placeholder's
+ * `--ps` scale, so the two cannot drift.
+ */
+const BAND_HEIGHT = "clamp(160px, 22svh, 200px)";
+
+/**
+ * The live `pixelScale` as a CSS length in px, derived from `--band-h` and the
+ * viewport width with the same formula `runner.ts` uses for `view().pixelScale`
+ * (including its clamps). The server-rendered placeholder (see the JSX) shares
+ * it so its ground line and player land exactly where the canvas will draw them
+ * — a `100vw` stand-in for the band width, which only differs by a scrollbar and
+ * only matters when the width term binds (narrow, i.e. scrollbar-less, mobile).
+ */
+const PIXEL_SCALE_CSS = `clamp(${TUNING.pixelScaleMin}px, min(calc(var(--band-h) / ${TUNING.targetWorldHeight}), calc(100vw / ${TUNING.minWorldWidth})), ${TUNING.pixelScaleMax}px)`;
+
 /**
  * The runner hero island.
  *
@@ -52,8 +77,14 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 	const bandRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const [interactive, setInteractive] = useState(false);
+	// False until the canvas has painted its first full scene; until then the
+	// server-rendered placeholder stands in for it (see the band markup).
+	const [sceneDrawn, setSceneDrawn] = useState(false);
 	const hintId = useId();
 	const groundColor = resolveGroundColor(ground, color);
+	// CSS mirror of the canvas dash strip for the server-rendered placeholder.
+	// `--ps` (the live pixelScale) is inherited from the placeholder block below.
+	const groundDashGradient = `repeating-linear-gradient(to right, ${groundColor} 0 calc(${GROUND_DASH_WIDTH} * var(--ps)), transparent calc(${GROUND_DASH_WIDTH} * var(--ps)) calc(${GROUND_DASH_TILE} * var(--ps)))`;
 
 	const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 	const [board, setBoard] = useState<BoardState>({ status: "loading" });
@@ -148,11 +179,12 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 		ctx.imageSmoothingEnabled = true;
 		ctx.imageSmoothingQuality = "high";
 
-		// Player frames, loaded once for the life of the island. A frame that is
-		// not decoded yet is skipped by `draw`; the rAF loop keeps running, so the
-		// next frame picks it up. Held in a closure, not React state, so playing
-		// never re-renders the component.
+		// Player frames, loaded once for the life of the island. Held in a closure,
+		// not React state, so playing never re-renders the component. Every frame
+		// must decode before the canvas replaces the server-rendered placeholder,
+		// so the swap can never expose a partial scene.
 		const playerImages: Partial<Record<Pose, HTMLImageElement[]>> = {};
+		const pending: Promise<unknown>[] = [];
 		for (const [pose, urls] of Object.entries(PLAYER_FRAMES) as [
 			Pose,
 			readonly string[],
@@ -161,9 +193,16 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 				const image = new Image();
 				image.decoding = "async";
 				image.src = url;
+				// `decode()` resolves once the frame is drawable; a failed frame
+				// resolves too, so one bad file cannot strand the placeholder.
+				pending.push(image.decode().catch(() => undefined));
 				return image;
 			});
 		}
+
+		// Set once every frame is decoded; `draw` is a no-op until then, so the
+		// canvas never paints a half-drawn scene behind the placeholder.
+		let sceneReady = false;
 
 		// Read the media query inside the effect: the component is still
 		// server-rendered, where matchMedia does not exist.
@@ -329,6 +368,9 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 		};
 
 		const draw = (): void => {
+			// The band shows its server-rendered placeholder until every frame is
+			// decoded (see `pending`); painting earlier would show a partial scene.
+			if (!sceneReady) return;
 			const s = view(game);
 			const px = s.pixelScale;
 			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -349,11 +391,15 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			ctx.globalAlpha = 1;
 
 			// Dash strip and dirt dashes: the parts of the ground that scroll.
-			const dashTile = 16;
-			const dash = 6;
-			const offset = ((s.groundOffset % dashTile) + dashTile) % dashTile;
-			for (let x = -offset; x < s.worldWidth + dashTile; x += dashTile) {
-				ctx.fillRect(x * px, groundTop, dash * px, 2);
+			const offset =
+				((s.groundOffset % GROUND_DASH_TILE) + GROUND_DASH_TILE) %
+				GROUND_DASH_TILE;
+			for (
+				let x = -offset;
+				x < s.worldWidth + GROUND_DASH_TILE;
+				x += GROUND_DASH_TILE
+			) {
+				ctx.fillRect(x * px, groundTop, GROUND_DASH_WIDTH * px, 2);
 			}
 
 			// Dirt dashes, tiled at `GROUND_TEXTURE_TILE_WIDTH` and scrolling with
@@ -620,6 +666,17 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 		draw();
 		measureParallax();
 
+		// Hand the band over from the server-rendered placeholder to the canvas.
+		// The `draw()` here paints the canvas and `setSceneDrawn(true)` drops the
+		// placeholder in the same turn, so both land before the next paint and the
+		// swap has nothing to flash. Hiding it through React state (rather than
+		// removing the node by hand) keeps the DOM React owns consistent.
+		void Promise.all(pending).then(() => {
+			sceneReady = true;
+			draw();
+			setSceneDrawn(true);
+		});
+
 		const resizeObserver = new ResizeObserver(onResize);
 		resizeObserver.observe(band);
 
@@ -685,14 +742,68 @@ export default function RunnerGame({ eventId, color, ground }: Props) {
 			{/* biome-ignore lint/a11y/useSemanticElements: <fieldset> is form grouping semantics; this is a labeled game region, not a form. */}
 			<div
 				ref={bandRef}
-				className="absolute inset-x-0 bottom-0 z-0 h-[clamp(160px,22svh,200px)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
+				className="absolute inset-x-0 bottom-0 z-0 h-[var(--band-h)] select-none overflow-hidden outline-none [@media(max-height:639px)]:hidden"
 				tabIndex={interactive ? 0 : -1}
 				role="group"
 				aria-label="Birthday runner mini-game"
 				aria-describedby={hintId}
-				style={{ touchAction: "manipulation" }}
+				style={
+					{
+						"--band-h": BAND_HEIGHT,
+						touchAction: "manipulation",
+					} as CSSProperties
+				}
 			>
 				<canvas ref={canvasRef} className="block h-full w-full" />
+				{/*
+				 * Server-rendered approximation of the idle scene. The island cannot
+				 * paint until it hydrates, so without this the band shows the bare hero
+				 * background for the gap between first paint and the first canvas draw —
+				 * the load flash. `sceneDrawn` drops it once the canvas has painted the
+				 * full scene (see the effect). Every measurement is tied to the same
+				 * constants the canvas uses, with `--ps` standing in for the live
+				 * `pixelScale`, so the handover does not move anything.
+				 */}
+				{!sceneDrawn && (
+					<div
+						data-ssr-scene
+						aria-hidden="true"
+						className="pointer-events-none absolute inset-0"
+						style={{ "--ps": PIXEL_SCALE_CSS } as CSSProperties}
+					>
+						<div
+							className="absolute inset-x-0 bottom-0"
+							style={{
+								top: `calc(100% - ${TUNING.groundMargin} * var(--ps))`,
+								backgroundColor: `color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent)`,
+								backgroundImage: groundTextureCssUrl(groundColor),
+								backgroundSize: `calc(${GROUND_TEXTURE_TILE_WIDTH} * var(--ps)) calc(${GROUND_TEXTURE_TILE_HEIGHT} * var(--ps))`,
+							}}
+						/>
+						<div
+							className="absolute inset-x-0 h-0.5"
+							style={{
+								top: `calc(100% - ${TUNING.groundMargin} * var(--ps))`,
+								backgroundImage: groundDashGradient,
+							}}
+						/>
+						<div
+							className="absolute"
+							style={{
+								left: `calc(${TUNING.playerX} * var(--ps))`,
+								bottom: `calc(${TUNING.groundMargin} * var(--ps))`,
+								width: `calc(${TUNING.playerWidth} * var(--ps))`,
+								height: `calc(${TUNING.playerHeight} * var(--ps))`,
+							}}
+						>
+							<img
+								src={PLAYER_FRAMES.idle[0]}
+								alt=""
+								className="h-full w-full object-contain object-bottom"
+							/>
+						</div>
+					</div>
+				)}
 				<p id={hintId} className="sr-only">
 					Press space, the up arrow, or W to jump. Press space or enter to
 					restart after a crash. Tap the hero to play.

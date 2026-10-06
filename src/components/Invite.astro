@@ -2,12 +2,10 @@
 import type { CollectionEntry } from "astro:content";
 import {
 	GROUND_FILL_ALPHA,
-	GROUND_TEXTURE,
-	GROUND_TEXTURE_ALPHA,
 	GROUND_TEXTURE_CSS_SCALE,
-	GROUND_TEXTURE_DASH_HEIGHT,
 	GROUND_TEXTURE_TILE_HEIGHT,
 	GROUND_TEXTURE_TILE_WIDTH,
+	groundTextureCssUrl,
 	resolveGroundColor,
 } from "../lib/runner-ground";
 import { deadStatus, IDLE_STATUS } from "../lib/runner-status";
@@ -85,27 +83,17 @@ const CLOUD_PARALLAX_RATE = "0.30";
 // bottom edge. The canvas paints `resolveGroundColor(ground, color)` at
 // `GROUND_FILL_ALPHA` over the hero; `color-mix` paints the same colour at the
 // same alpha over the page, which matches the rendered result without a
-// full-opacity slab. The same `GROUND_TEXTURE` dirt dashes the canvas blits are
-// rebuilt here as a repeating SVG background, so the section also reads as 8-bit
-// stratified soil rather than flat tint. One list feeds both renderers, so they
-// cannot drift. Themes without a runner get no tint and no texture.
+// full-opacity slab. `groundTextureCssUrl` rebuilds the same `GROUND_TEXTURE`
+// dirt dashes the canvas blits as a repeating SVG background, so the section
+// also reads as 8-bit stratified soil rather than flat tint. One list feeds
+// both renderers, so they cannot drift. Themes without a runner get no tint and
+// no texture. `background-size` scales one tile to CSS px using the 2 px-per-unit
+// stand-in the canvas's live `pixelScale` cannot be reproduced with here.
 const groundColor = theme.runner
 	? resolveGroundColor(theme.runner.ground, theme.runner.color)
 	: null;
-const groundTextureRects = GROUND_TEXTURE.map(
-	(s) =>
-		`<rect x="${s.x}" y="${s.y}" width="${s.w}" height="${GROUND_TEXTURE_DASH_HEIGHT}"/>`,
-).join("");
-// The SVG is percent-encoded (`shape-rendering="crispEdges"` keeps the dashes
-// from being antialiased) and quoted with single quotes inside `url(...)`, so the
-// URL carries no raw `"`, `<`, `>`, or `#`. `background-size` scales one tile to
-// CSS px using the same 2 px-per-unit stand-in the canvas's live `pixelScale`
-// cannot be reproduced with here.
-const groundTextureUrl = `url('data:image/svg+xml,${encodeURIComponent(
-	`<svg xmlns="http://www.w3.org/2000/svg" width="${GROUND_TEXTURE_TILE_WIDTH}" height="${GROUND_TEXTURE_TILE_HEIGHT}" shape-rendering="crispEdges"><g fill="${groundColor}" fill-opacity="${GROUND_TEXTURE_ALPHA}">${groundTextureRects}</g></svg>`,
-)}')`;
 const detailsGroundStyle = groundColor
-	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent); background-image: ${groundTextureUrl}; background-size: ${GROUND_TEXTURE_TILE_WIDTH * GROUND_TEXTURE_CSS_SCALE}px ${GROUND_TEXTURE_TILE_HEIGHT * GROUND_TEXTURE_CSS_SCALE}px;`
+	? `background-color: color-mix(in srgb, ${groundColor} calc(${GROUND_FILL_ALPHA} * 100%), transparent); background-image: ${groundTextureCssUrl(groundColor)}; background-size: ${GROUND_TEXTURE_TILE_WIDTH * GROUND_TEXTURE_CSS_SCALE}px ${GROUND_TEXTURE_TILE_HEIGHT * GROUND_TEXTURE_CSS_SCALE}px;`
 	: "";
 ---
 
