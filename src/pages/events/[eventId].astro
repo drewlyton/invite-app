@@ -38,7 +38,12 @@ const { Content } = await render(event);
 		<Invite event={event} theme={theme} />
 
 		<section id="rsvp" class="scroll-mt-6 px-6 pt-2 pb-12 sm:pt-3 sm:pb-16">
-			<div class="mx-auto mt-8 max-w-md min-h-[640px]">
+			{/* No height floor on this wrapper on purpose. The form carries one instead
+			    (see `RsvpForm`), because the floor has to cover the interactive form and
+			    *not* the submitted confirmation: a floor that cannot tell those two
+			    apart leaves the page scrolling past its own end after the visitor has
+			    already submitted. */}
+			<div class="mx-auto mt-8 max-w-md">
 				<RsvpForm eventId={event.id} client:load />
 			</div>
 		</section>

@@ -112,7 +112,21 @@ export default function RsvpForm({ eventId }: Props) {
 	}
 
 	return (
-		<form onSubmit={handleSubmit} autoComplete="off" className="space-y-5">
+		/* The height floor belongs to this branch and not to the confirmation above.
+		   Switching to "I can't go" collapses the going-only fields under the
+		   visitor's cursor, and without a floor the *page* loses those ~430px too: at
+		   the bottom of the document the scroll clamps and the whole viewport slides
+		   as the section shrinks. The floor keeps the page height, so the only thing
+		   that moves is the form's own content — which is the switch the visitor just
+		   asked for. It is deliberately below the expanded layout (~690px at desktop
+		   width) so it costs nothing while the fields are shown, and deliberately
+		   absent from the confirmation card, a terminal state where a reserved height
+		   is only scroll room past the end of the page. */
+		<form
+			onSubmit={handleSubmit}
+			autoComplete="off"
+			className="min-h-[640px] space-y-5"
+		>
 			<h2 className="text-center text-xl font-semibold text-stone-900">
 				Will you be there?
 			</h2>
