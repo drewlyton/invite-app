@@ -62,7 +62,7 @@ export type RenderState = {
 	worldHeight: number;
 	groundY: number;
 	player: Rect & { pose: Pose; frame: number; airborne: boolean };
-	obstacles: (Rect & { kind: ObstacleKind; frame: number })[];
+	obstacles: (Rect & { kind: ObstacleKind; frame: number; tint: number })[];
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ export const TUNING = {
 	maxDt: 0.05,
 
 	// Animation.
-	// Frame period of the animated *art*. Only the obstacles' placeholder cycle
+	// Frame period of the animated *art*. Only the obstacles' candle flame cycle
 	// reads it now: the player's poses are either single frames or the one-shot
 	// crouch transitions timed by the `*CrouchDuration` knobs below, and the idle
 	// pose is held still on its first frame.
@@ -151,6 +151,23 @@ export type Tuning = { -readonly [K in keyof typeof TUNING]: number };
  * the number the spawner actually uses rather than a stale copy.
  */
 export const AIR_TIME = (2 * Math.abs(TUNING.jumpVelocity)) / TUNING.gravity;
+
+/**
+ * Number of frames the obstacle art cycles through. The simulation advances each
+ * obstacle's `frame` modulo this count inside `step`, which is what makes the
+ * candles' flicker simulation-driven: the flames freeze exactly when the world
+ * does, with no wall clock involved. `runner-obstacles.ts`'s `FLAME_VARIANTS`
+ * must have this many entries, and the harness asserts it.
+ */
+export const OBSTACLE_FRAME_COUNT = 4;
+
+/**
+ * Number of wax colours the obstacle art can tint a spawn with. The simulation
+ * draws each obstacle's `tint` from its own seeded stream (`GameState.tintRng`),
+ * so the spawning stays deterministic and the art's `WAX_COLORS` must have this
+ * many entries; the harness asserts it.
+ */
+export const OBSTACLE_TINT_COUNT = 6;
 
 /** Nominal airtime for an arbitrary tuning, for the debug page's per-run knobs. */
 function airTimeFor(tuning: Tuning): number {
@@ -178,8 +195,12 @@ type ObstacleShape = {
  *
  * Widths are not pinned down by the spec; the values here are the prototype's
  * choice (see report).
+ *
+ * Exported so verification and preview can derive the exact set of `(kind,
+ * width)` shapes the spawner produces — including the cluster's `blockW * n`
+ * widths — instead of hand-copying the numbers into a mirror table.
  */
-const OBSTACLE_SHAPES: Record<ObstacleKind, ObstacleShape> = {
+export const OBSTACLE_SHAPES: Record<ObstacleKind, ObstacleShape> = {
 	"ground-narrow": { bottom: 0, h: 10, w: 4 },
 	"ground-wide": { bottom: 0, h: 16, w: 10 },
 	"ground-cluster": {
@@ -234,6 +255,8 @@ type ObstacleState = {
 	h: number;
 	frame: number;
 	frameTime: number;
+	/** Seeded wax colour index for the art, drawn at spawn. */
+	tint: number;
 };
 
 type WorldGeometry = {
@@ -256,6 +279,11 @@ type GameState = Game & {
 	nextSpawnDistance: number;
 	nextKind: ObstacleKind;
 	nextWidth: number;
+	/**
+	 * Separate seeded stream for the art's wax tint, so drawing a presentation
+	 * colour never consumes a value from `rng` and shifts the gameplay sequence.
+	 */
+	tintRng: number;
 	/**
 	 * Distance at which the *previous* obstacle spawned. The pending spawn's
 	 * gap is measured from here, so `resize()` can re-solve it against a new
@@ -306,6 +334,16 @@ function rngNext(rng: number): { value: number; rng: number } {
 	r = Math.imul(r ^ (r >>> 15), r | 1);
 	r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
 	return { value: ((r ^ (r >>> 14)) >>> 0) / 4294967296, rng: t };
+}
+
+/**
+ * Separate mulberry32 seed for the art's tint stream, derived from the run seed.
+ * The XOR (a 32-bit golden-ratio constant) keeps it decorrelated from the
+ * gameplay `rng` while staying a pure function of `seed`, so a replay is exact
+ * and the tint draws can never shift the spawn sequence.
+ */
+function tintSeed(seed: number): number {
+	return (seed ^ 0x9e3779b9) >>> 0;
 }
 
 /** Speed is a linear ramp over distance, capped at maxSpeed. */
@@ -393,6 +431,7 @@ function makeObstacle(
 	groundY: number,
 	kind: ObstacleKind,
 	width: number,
+	tint: number,
 	spawnX: number,
 ): ObstacleState {
 	const shape = OBSTACLE_SHAPES[kind];
@@ -404,6 +443,7 @@ function makeObstacle(
 		h: shape.h,
 		frame: 0,
 		frameTime: 0,
+		tint,
 	};
 }
 
@@ -467,6 +507,7 @@ export function createGame(
 		highScore: opts.highScore ?? 0,
 		seed,
 		rng: first.rng,
+		tintRng: tintSeed(seed),
 		tuning,
 		bandHeight,
 		canvasWidth,
@@ -491,6 +532,7 @@ function beginRun(g: GameState): GameState {
 		phase: "running",
 		score: 0,
 		rng: first.rng,
+		tintRng: tintSeed(g.seed),
 		// A run opens with the push intro, not a ride: `stepPlayer` selects
 		// "ride" once `runTime` passes `TUNING.pushDuration`.
 		player: makePlayer(g.groundY, g.playerX, "push"),
@@ -697,7 +739,12 @@ export function step(game: Game, dt: number, input: Input): Game {
 	const player = stepPlayer(g, stepDt, input);
 
 	let obstacles: ObstacleState[] = g.obstacles.map((o) => {
-		const animated = advanceFrame(o.frame, o.frameTime, stepDt, 2);
+		const animated = advanceFrame(
+			o.frame,
+			o.frameTime,
+			stepDt,
+			OBSTACLE_FRAME_COUNT,
+		);
 		return {
 			...o,
 			x: o.x - move,
@@ -708,6 +755,7 @@ export function step(game: Game, dt: number, input: Input): Game {
 	obstacles = obstacles.filter((o) => o.x + o.w > 0);
 
 	let rng = g.rng;
+	let tintRng = g.tintRng;
 	let nextSpawnDistance = g.nextSpawnDistance;
 	let nextKind = g.nextKind;
 	let nextWidth = g.nextWidth;
@@ -718,7 +766,16 @@ export function step(game: Game, dt: number, input: Input): Game {
 	// One spawn per step is safe: even at max speed and maxDt the world moves
 	// ~13 units per step, far less than the smallest fair gap (~60 units).
 	if (distance >= nextSpawnDistance) {
-		obstacles.push(makeObstacle(g.groundY, nextKind, nextWidth, spawnX));
+		// The tint is drawn from its own stream at the moment of spawn (the pending
+		// first obstacle included), so art randomness never perturbs the gameplay
+		// sequence.
+		const tintDraw = rngNext(tintRng);
+		tintRng = tintDraw.rng;
+		const tint = Math.min(
+			OBSTACLE_TINT_COUNT - 1,
+			Math.floor(tintDraw.value * OBSTACLE_TINT_COUNT),
+		);
+		obstacles.push(makeObstacle(g.groundY, nextKind, nextWidth, tint, spawnX));
 		const spawnDistance = distance;
 		prevSpawnDistance = spawnDistance;
 		const chosen = chooseObstacle(rng);
@@ -765,6 +822,7 @@ export function step(game: Game, dt: number, input: Input): Game {
 		prevSpawnDistance,
 		nextGapJitter,
 		rng,
+		tintRng,
 	};
 	return next;
 }
@@ -797,6 +855,7 @@ export function view(game: Game): RenderState {
 			h: o.h,
 			kind: o.kind,
 			frame: o.frame,
+			tint: o.tint,
 		})),
 	};
 }

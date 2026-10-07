@@ -26,7 +26,7 @@ leaderboard that hangs off its game-over flow is a separate feature, owned by
 | Mobile | Same as desktop: tap the hero. No separate touch controls. |
 | Controls | **Jump only** — one button. Space / tap jumps; Space / Enter restarts when dead. No duck, no second action. |
 | Clouds | Game replaces the bottom (large, fast) cloud layer. The top distant-cloud strip stays. |
-| Sprite art | Transparent PNG frames cut from a generated sprite sheet at native resolution, drawn into the player's 16×22 world box; the theme colour still drives the ground and obstacles. |
+| Sprite art | Transparent PNG frames cut from a generated sprite sheet at native resolution, drawn into the player's 16×22 world box. The theme colour still drives the ground; the obstacle candles own their palette (`src/lib/runner-obstacles.ts`). |
 | Milestone (optional) | Score 30 → confetti + "Happy 30th!", reusing `canvas-confetti`. |
 | Playfield width | **Dynamic**: `worldWidth = canvasWidth / pixelScale`. Difficulty is constant in world units; warning time varies with viewport and is guarded by a minimum playfield width. |
 | Prototype boundary | Steps 1–2 only (`runner.ts` + a throwaway debug renderer), to settle the tuning numbers. |
@@ -47,7 +47,9 @@ aesthetic stays consistent with `public/clouds/*.svg`.
 ```
 src/lib/runner.ts              pure simulation — physics, spawns, collision, scoring
 src/lib/runner-sprites.ts      frame manifest + blit helper (manifest is generated)
+src/lib/runner-obstacles.ts    candle layout + palette + canvas blit (shared with the preview)
 scripts/build-sprites.ts       cuts the sheet into frames and regenerates that manifest
+scripts/preview-obstacles.ts   renders every obstacle shape x flame frame to /tmp
 src/assets/runner/             source sprite sheet (build-time input)
 public/runner/player/          cut, transparent, native-resolution frame PNGs (served)
 src/components/RunnerGame.tsx  React island — canvas, clock, input, lifecycle
@@ -90,7 +92,7 @@ type RenderState = {
   groundY: number;
   groundOffset: number;                       // scrolled distance, for tiling the ground
   player: Rect & { pose: Pose; frame: number; airborne: boolean };
-  obstacles: (Rect & { kind: ObstacleKind; frame: number })[];
+  obstacles: (Rect & { kind: ObstacleKind; frame: number; tint: number })[];
 };
 
 type Geometry = { bandHeight: number; canvasWidth: number };
@@ -125,7 +127,7 @@ Anchoring is resolved inside `view()`: `player.y` is already the top-left of the
 current pose's box with the feet planted on `GROUND_Y`, so the renderer never
 converts between anchors. It calls
 `drawPlayerFrame(ctx, image, s.player.x, s.player.y, px)` for the player and
-`ctx.fillRect(s.x * px, s.y * px, s.w * px, s.h * px)` for each obstacle.
+`drawObstacle(ctx, o, px)` for each obstacle.
 
 **Determinism.** All randomness comes from `seed`. `runner.ts` must never call
 `Math.random()` or `Date.now()`; the component derives the default seed and
@@ -424,7 +426,9 @@ than hard.
   are native-resolution PNGs (see [Sprites](#sprites)), so the draw is a
   high-quality downscale; `imageSmoothingEnabled` and
   `imageSmoothingQuality = "high"` are set once when the context is acquired.
-  Obstacles are still one `fillRect` each.
+  Obstacles are candles drawn from the shared `obstacleCandleParts` layout (see
+  [Obstacle art](#obstacle-art)), filled one rect at a time so each wax tone can
+  carry its own tinted colour.
 - **The score lives in the hero's status line, not on the canvas.** The island
   finds `[data-runner-status]` once and rewrites its `textContent` from the rAF
   loop, and only when the formatted string changes. The old canvas HUD block is
@@ -575,13 +579,99 @@ once `phase` is `dead` — and the renderer draws that frozen frame at
 a pose switch. The physics above the freeze still runs, so a player caught
 mid-jump falls to the ground instead of hanging in the air.
 
-Obstacle art (the ground/flying kinds) is still unbuilt and drawn as rectangles;
-the ground texture and dashes are the shared `GROUND_TEXTURE` list.
-
 The sheet is original generated art, not copied from the original game. Keeping
 the source sheet, the cut frame PNGs and the generated manifest together in the
 repo means a character change is reviewable as a diff — or reproducible by
 re-running the generator.
+
+### Obstacle art
+
+Obstacles are **flickering candles**, drawn from one shared, DOM-free layout:
+`obstacleCandleParts` in `src/lib/runner-obstacles.ts` returns the candle as
+axis-aligned world-unit rects tagged with a role and a resolved colour, and both
+renderers consume that same list — `drawObstacle` fills one canvas rect per part
+and `scripts/preview-obstacles.ts` maps them to SVG rects. The simulation's
+obstacle rect stays the source of truth: the wax body's top is `o.y` and its
+bottom is `o.y + o.h`, so a ground kind sits exactly on the ground line and a
+flying kind floats at its clearance. **Collision is unchanged — the body rect is
+the collider and the flame is decorative art above it.** The wax spans the
+collider's full height and is centred horizontally within its width; because every
+candle keeps the same 2-unit width, a width that is not a multiple of
+`CANDLE_PITCH` (`w=4` and `w=10`) leaves at most **1.0 unit** of the collider
+undrawn per side (the others 0.5). There is no ground/flying branch in the art
+code.
+
+A unit candle is a 2-unit body column (`CANDLE_BODY_WIDTH`), a 1-unit gap
+(`CANDLE_GAP`) and a 2-unit flame (`FLAME_WIDTH`), so the pitch is
+`CANDLE_PITCH = CANDLE_BODY_WIDTH + CANDLE_GAP = 3`. A wide obstacle is a row of
+them: `count = max(1, floor((o.w + CANDLE_GAP) / CANDLE_PITCH))`, laid out at
+`start + i * CANDLE_PITCH` from `start = (o.w - rowWidth) / 2`, with
+`rowWidth = count * CANDLE_BODY_WIDTH + (count - 1) * CANDLE_GAP`. The widths the
+spawner produces map to rows as `w=3`/`w=4` → 1, `w=6` → 2, `w=9`/`w=10` → 3, and
+the centring keeps every candle inside the obstacle while leaving at most 1.0 unit
+undrawn per side. Neighbouring bodies are separated by the 1-unit gap (2 CSS px at
+`pixelScale` 2), so a row never reads as one slab; at the smallest geometry the
+runner allows (`pixelScale` 1.5) the body is 3 CSS px and the gap 1.5 CSS px, the
+worst case for legibility. Body height is `o.h` for every candle, and the candle
+width is constant by construction.
+
+The flame is one shape family across `FLAME_VARIANTS` (`OBSTACLE_FRAME_COUNT = 4`
+of them in `runner.ts`, asserted equal by `scripts/verify-runner.ts`): a 2-unit
+base, a 1-unit shoulder and a 1-unit tapered tip, with heights 4/5/6/5 and a
+slight lean into one of the body's two columns. The wick is a 1-unit strip across
+the top of the body (a 2-wide body cannot centre a 1-wide wick, so it spans the
+full body width, inside the body rect). Its phase is **simulation-driven, not
+wall-clock**: `step` advances each obstacle's `frame` modulo
+`OBSTACLE_FRAME_COUNT`, and the layout picks
+`FLAME_VARIANTS[(o.frame + candleIndex) % FLAME_VARIANT_COUNT]`, so neighbouring
+candles in a row are out of phase and the flames freeze with the world (death,
+hidden tab, reduced motion) instead of running on `performance.now()`.
+
+The palette lives in the module — no `Theme` fields, the way the moon SVG and the
+sprite sheet own theirs. `WAX_COLORS` holds **six** colours (red, pink, violet,
+blue, green, teal), each a **two-tone** wax — the full-width `wax` mass and the
+1-unit `waxShade` right edge that overlay to tile the 2-unit body exactly — while
+the wick and the flame stay a fixed warm ramp (`CANDLE_PALETTE`). Each spawn
+draws a seeded `tint ∈ [0, OBSTACLE_TINT_COUNT)` from its own stream (kept
+separate from the gameplay rng so drawing a presentation colour never shifts the
+spawn sequence), and within a row the colour is
+`WAX_COLORS[(o.tint + candleIndex) % WAX_COLORS.length]`: an obstacle is a
+random wax colour per spawn, while adjacent candles in one row are **always
+different** because consecutive indices step by one. `WAX_COLORS.length ==
+OBSTACLE_TINT_COUNT` is asserted. Ratios are against the sky `#e7e5e4` (which the
+flying candles float against) and the ground band's near tone `#a6a3a1`:
+
+| Colour | Tone | Hex | vs sky | vs ground |
+| --- | --- | --- | --- | --- |
+| red | wax | `#c75e59` | 3.23:1 | 1.62:1 |
+| red | shade | `#761914` | 8.71:1 | 4.36:1 |
+| pink | wax | `#d25486` | 3.12:1 | 1.56:1 |
+| pink | shade | `#80103c` | 8.13:1 | 4.07:1 |
+| violet | wax | `#9156b4` | 3.99:1 | 2.00:1 |
+| violet | shade | `#461266` | 10.87:1 | 5.44:1 |
+| blue | wax | `#4c77b9` | 3.60:1 | 1.80:1 |
+| blue | shade | `#092f6a` | 10.28:1 | 5.15:1 |
+| green | wax | `#56885a` | 3.30:1 | 1.65:1 |
+| green | shade | `#123e15` | 9.69:1 | 4.85:1 |
+| teal | wax | `#42898c` | 3.22:1 | 1.61:1 |
+| teal | shade | `#003f42` | 9.35:1 | 4.68:1 |
+| wick | | `#3a2a1a` | 10.96:1 | 5.49:1 |
+| flameOuter | silhouette | `#d9481c` | 3.42:1 | 1.71:1 |
+| flameMid | | `#f59d1b` | 1.72:1 | 1.16:1 |
+| flameCore | | `#ffe9a8` | 1.04:1 | 2.09:1 |
+
+The `wax` tone is the binding one — it is the brighter of the two and lightening
+raises luminance and cuts sky contrast — so the palette was derived by mixing each
+chosen base `0.26` toward white for `wax` and `0.34` toward black for `shade`.
+Those mixes are exact formula outputs, not hand-tweaked hexes; the tuning was in
+the base colours, chosen together with the ratios until every `wax` tone clears
+3:1 against the sky — the worst is pink wax at 3.12:1. Against the ground the wax
+tones are carried by their saturated hue rather than by a large ratio (1.56:1 to
+2.00:1 contrast vs ground). Only the flame's outer tone has to read against the
+sky — the mid and core sit inside that silhouette and only add heat, so their low
+sky contrast is intentional. `scripts/preview-obstacles.ts` renders every shape ×
+every frame to `/tmp/runner-obstacles.png` over a mock sky/ground scene, with a
+wax/shade legend along the top.
 
 ## Interaction and input
 
@@ -662,9 +752,10 @@ both the requested behaviour and the reason the page stays cheap.
   is hidden the padding shrinks to a small reserve (`pb-12`) that still keeps the
   content clear of the ground RSVP link pinned at the hero's bottom.
 - Game sits at `z-0`, `.hero-content` stays `z-10`.
-- Colour: render in the same muted stone tone family as the hero's other art
-  (the clouds' ink, the ground's mid grey) from `theme.runner.color`, not a bold
-  dark silhouette.
+- Colour: the clouds, ground and player render in the same muted stone tone family
+  as the hero's other art (the clouds' ink, the ground's mid grey) from
+  `theme.runner.color`, not a bold dark silhouette. The obstacle candles are the
+  deliberate exception: they own their saturated `WAX_COLORS` palette instead.
 
 ### Hero composition and below-the-fold details
 
@@ -1103,7 +1194,8 @@ event, which is acceptable because `game-night-light` is this event's theme.
    the five poses are cut from `src/assets/runner/skateboard-sheet.jpg` by
    `scripts/build-sprites.ts` at native resolution and drawn as images through
    `RunnerGame.tsx`'s `drawPlayerFrame` call, with the frame counts asserted.
-   Obstacle art still remains placeholder rectangles.
+   The obstacle placeholders are gone too: they are candles drawn from the shared
+   `obstacleCandleParts` layout (see [Obstacle art](#obstacle-art)).
 5. Focusable region, offscreen instructions, reduced-motion branch, contrast pass.
 6. Optional: score-30 confetti milestone.
 7. `npm run lint` and a `astro build`.
@@ -1196,8 +1288,9 @@ input model specified above.
 original sketch assumed one recolourable bitmap per theme; a character with a
 face cannot come from a single tint without turning into a silhouette. The
 frames are cut from the sheet at their own resolution and drawn as images into
-the 16×22 world box, so the theme colour still drives the ground and the
-obstacle rectangles but no longer touches the player.
+the 16×22 world box, so the theme colour still drives the ground but no longer
+touches the obstacle rectangles (they own `WAX_COLORS` + `CANDLE_PALETTE`) or the
+player.
 - **The player frames come from the sprite sheet.** The pose graph, frame counts,
 manifest, blit path and verification scripts are complete, and the frames are
 generated from `src/assets/runner/skateboard-sheet.jpg` by
@@ -1205,7 +1298,10 @@ generated from `src/assets/runner/skateboard-sheet.jpg` by
 generated block is marked and must not be hand-edited. The sheet has no crash
 art, so a crash freezes and fades the current frame instead (see
 [Sprites](#sprites)).
-- Obstacle art is also placeholder rectangles.
+- Obstacle art is no longer placeholder rectangles: obstacles are candles drawn
+  from the shared `obstacleCandleParts` layout in `src/lib/runner-obstacles.ts`,
+  with a simulation-driven flame cycle (`OBSTACLE_FRAME_COUNT`) and a canvas/SVG
+  pair that cannot drift.
 
 ## Verification
 
@@ -1246,6 +1342,25 @@ There is no test runner in this repo, so:
     so the nominal bound is the conservative one and the measured one has ~1.5
     units more headroom. The sweep must widen if the band clamp ever changes, or it
     could miss a new tightest case.
+  - **Obstacle candle art**: for every obstacle kind and every flame frame,
+    `FLAME_VARIANTS.length === OBSTACLE_FRAME_COUNT`, `WAX_COLORS.length ===
+    OBSTACLE_TINT_COUNT`, and `obstacleCandleParts` returns non-empty parts that
+    stay inside the obstacle's horizontal footprint (0.01 tolerance) with every
+    **wax** part spanning exactly `[o.y, o.y + o.h]` (the wick is a separate,
+    shorter part). The `(kind, width)` shapes collected from a real spawner run
+    must cover the shapes derived from the exported `OBSTACLE_SHAPES` exactly —
+    missing and unexpected both fail — the full-width `wax` mass of every candle
+    is `CANDLE_BODY_WIDTH` wide (constant candle width), consecutive candles are
+    exactly `CANDLE_GAP` apart (tolerance 0.01), and the wax union spans all but
+    at most `(CANDLE_PITCH - 1) / 2` units per side of the collider (the
+    documented sliver at `w=4`/`w=10`). On top of that, the run must observe
+    **every tint** at least once (the randomization is real, not a frozen
+    constant), every wax part's colour must be a member of `WAX_COLORS` with
+    adjacent candles in a row always different (also proved at the palette level,
+    so it holds for every row, not just the sampled one), and every **visible**
+    wax tone (`wax` and `shade`) must clear 3:1 against the sky — all derived from
+    the exported palette and the module's own `CANDLE_CONTRAST_SKY` /
+    `CANDLE_CONTRAST_GROUND` reference colours, never hand-copied.
 
   Assertions and reported numbers must be **derived from `TUNING`**, never
   hand-copied. A hardcoded airtime in the harness is the bug class that produced

@@ -16,6 +16,9 @@ import {
 	AIR_TIME,
 	createGame,
 	type Game,
+	OBSTACLE_FRAME_COUNT,
+	OBSTACLE_SHAPES,
+	OBSTACLE_TINT_COUNT,
 	type ObstacleKind,
 	resize,
 	start,
@@ -23,6 +26,19 @@ import {
 	TUNING,
 	view,
 } from "../src/lib/runner.ts";
+import {
+	CANDLE_BODY_ROLES,
+	CANDLE_BODY_WIDTH,
+	CANDLE_CONTRAST_GROUND,
+	CANDLE_CONTRAST_SKY,
+	CANDLE_GAP,
+	CANDLE_PITCH,
+	FLAME_VARIANT_COUNT,
+	FLAME_VARIANTS,
+	type ObstacleArt,
+	obstacleCandleParts,
+	WAX_COLORS,
+} from "../src/lib/runner-obstacles.ts";
 
 const DT = 1 / 120;
 
@@ -708,6 +724,298 @@ function verticalFitTest(): Assertion {
 	};
 }
 
+// --- 8. obstacle candle art ------------------------------------------------
+
+/**
+ * The obstacle art is a pure layout (`obstacleCandleParts`) shared by the canvas
+ * and the SVG preview, so it is checkable without a canvas. Drive the real
+ * spawner to find one obstacle of every `(kind, width)` shape the exported
+ * `OBSTACLE_SHAPES` advertises *and* every tint the art can draw, then assert for
+ * every shape and every flame frame:
+ *
+ *   - `FLAME_VARIANTS` has exactly `OBSTACLE_FRAME_COUNT` entries and
+ *     `WAX_COLORS` has exactly `OBSTACLE_TINT_COUNT`;
+ *   - the seen `(kind, width)` set covers the expected set exactly — missing and
+ *     unexpected shapes both fail, so a width-coverage regression cannot pass;
+ *   - every tint from `[0, OBSTACLE_TINT_COUNT)` is actually produced by the
+ *     seeded spawner, so the randomization is real and not a frozen constant;
+ *   - every part is non-empty and stays inside the obstacle's horizontal
+ *     footprint;
+ *   - every full-width `wax` mass is `CANDLE_BODY_WIDTH` wide, so the candle
+ *     width is constant across every shape;
+ *   - every wax part (`CANDLE_BODY_ROLES`) spans exactly `[o.y, o.y + o.h]`;
+ *   - every wax part's resolved colour is a member of `WAX_COLORS`, and adjacent
+ *     candles in a multi-candle row never share a colour — the latter also proved
+ *     at the palette level, so it holds for every row and not just this run;
+ *   - consecutive full-width `wax` masses in a row are exactly `CANDLE_GAP`
+ *     apart, derived from the exported constants;
+ *   - every visible wax tone (`wax` and `shade`) clears 3:1 against the sky;
+ *   - the wax union spans all but at most `(CANDLE_PITCH - 1) / 2` world units per
+ *     side of the rect.
+ *
+ * No number here is hand-copied: the expected shapes come from the exported
+ * `OBSTACLE_SHAPES`, the frame and tint counts from `runner.ts`, the palette,
+ * reference background colours, gap/pitch and layout from the art module, and the
+ * rects from the simulation.
+ */
+
+/** WCAG relative luminance of an sRGB hex colour, the module header's formula. */
+function relativeLuminance(hex: string): number {
+	const n = Number.parseInt(hex.slice(1), 16);
+	const channel = (c: number): number => {
+		const s = c / 255;
+		return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+	};
+	return (
+		0.2126 * channel((n >> 16) & 255) +
+		0.7152 * channel((n >> 8) & 255) +
+		0.0722 * channel(n & 255)
+	);
+}
+
+/** WCAG contrast ratio between two sRGB hex colours. */
+function contrastRatio(a: string, b: string): number {
+	const la = relativeLuminance(a);
+	const lb = relativeLuminance(b);
+	return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+function obstacleArtTest(): Assertion {
+	const problems: string[] = [];
+	if (FLAME_VARIANTS.length !== OBSTACLE_FRAME_COUNT) {
+		problems.push(
+			`FLAME_VARIANTS ${FLAME_VARIANTS.length} != OBSTACLE_FRAME_COUNT ${OBSTACLE_FRAME_COUNT}`,
+		);
+	}
+	if (FLAME_VARIANT_COUNT !== FLAME_VARIANTS.length) {
+		problems.push(
+			`FLAME_VARIANT_COUNT ${FLAME_VARIANT_COUNT} != FLAME_VARIANTS.length ${FLAME_VARIANTS.length}`,
+		);
+	}
+	// The art indexes the wax palette by the simulation's tint, so the two counts
+	// must agree or a tint could run past the end of the palette.
+	if (WAX_COLORS.length !== OBSTACLE_TINT_COUNT) {
+		problems.push(
+			`WAX_COLORS ${WAX_COLORS.length} != OBSTACLE_TINT_COUNT ${OBSTACLE_TINT_COUNT}`,
+		);
+	}
+
+	// Contrast: the documented requirement is that every visible wax tone (the
+	// full-width `wax` mass and the `waxShade` edge) clears 3:1 against the hero
+	// sky. Computed here from the palette itself so a future colour edit cannot
+	// quietly dip below the floor; `wax` is the binding tone because it is the
+	// brighter of the two and lightening cuts sky contrast. The reference sky and
+	// ground tones come from the art module, not from hand-copied literals.
+	const waxPalette = new Set<string>();
+	let worstWaxSky = Number.POSITIVE_INFINITY;
+	let worstWaxName = "";
+	let worstWaxGround = Number.POSITIVE_INFINITY;
+	for (const wax of WAX_COLORS) {
+		for (const tone of ["wax", "shade"] as const) {
+			const hex = wax[tone].toLowerCase();
+			waxPalette.add(hex);
+			const vsSky = contrastRatio(hex, CANDLE_CONTRAST_SKY);
+			if (vsSky < 3 - 1e-9) {
+				problems.push(
+					`wax ${wax.name} ${tone} ${hex} vs sky ${vsSky.toFixed(2)} < 3:1`,
+				);
+			}
+			if (tone === "wax") {
+				if (vsSky < worstWaxSky) {
+					worstWaxSky = vsSky;
+					worstWaxName = `${wax.name} ${tone}`;
+				}
+				const vsGround = contrastRatio(hex, CANDLE_CONTRAST_GROUND);
+				if (vsGround < worstWaxGround) worstWaxGround = vsGround;
+			}
+		}
+	}
+
+	// Adjacency is a property of the palette itself, not of one sampled run: the
+	// per-candle offset steps the palette index by one, so a row could only repeat
+	// a colour if two consecutive entries shared the same `wax` hex. Prove that for
+	// every pair (including the wrap), so it holds for every row and every tint.
+	for (let i = 0; i < WAX_COLORS.length; i++) {
+		const j = (i + 1) % WAX_COLORS.length;
+		if (WAX_COLORS[i].wax === WAX_COLORS[j].wax) {
+			problems.push(
+				`WAX_COLORS[${i}] (${WAX_COLORS[i].name}) and [${j}] (${WAX_COLORS[j].name}) share wax ${WAX_COLORS[i].wax}`,
+			);
+		}
+	}
+
+	// Expected (kind, width) shapes straight from the exported spawner table:
+	// clusters are `blockW * n` for `n` in `blocksMin..blocksMax`, every other kind
+	// uses its fixed `w`. This replaces the old hand-copied `clusterWidths.size === 3`
+	// stop condition with one derived from the real table.
+	const expectedShapes = new Set<string>();
+	for (const [kind, shape] of Object.entries(OBSTACLE_SHAPES)) {
+		const { blocksMin, blocksMax } = shape;
+		if (blocksMin !== undefined && blocksMax !== undefined) {
+			const blockW = shape.blockW ?? shape.w;
+			for (let n = blocksMin; n <= blocksMax; n++) {
+				expectedShapes.add(`${kind}:${blockW * n}`);
+			}
+		} else {
+			expectedShapes.add(`${kind}:${shape.w}`);
+		}
+	}
+
+	// One obstacle per (kind, width), collected from the real spawner, plus every
+	// tint the run draws. Stop when the expected shape set is covered *and* every
+	// tint has been seen, or after a step budget.
+	let g = start(createGame({ seed: 1, bandHeight: 190, canvasWidth: 640 }));
+	const seen = new Map<string, ObstacleArt>();
+	const tintsSeen = new Set<number>();
+	const maxSteps = 600000;
+	let steps = 0;
+	for (; steps < maxSteps; steps++) {
+		g = step(g, DT, { jump: false });
+		for (const o of view(g).obstacles) {
+			const key = `${o.kind}:${o.w}`;
+			if (!seen.has(key)) seen.set(key, { ...o });
+			tintsSeen.add(o.tint);
+		}
+		const shapesCovered = [...expectedShapes].every((key) => seen.has(key));
+		if (shapesCovered && tintsSeen.size >= OBSTACLE_TINT_COUNT) break;
+	}
+
+	if (tintsSeen.size < OBSTACLE_TINT_COUNT) {
+		const missing = [];
+		for (let t = 0; t < OBSTACLE_TINT_COUNT; t++) {
+			if (!tintsSeen.has(t)) missing.push(t);
+		}
+		problems.push(
+			`only ${tintsSeen.size}/${OBSTACLE_TINT_COUNT} tints observed (missing ${missing.join(", ")})`,
+		);
+	}
+
+	const seenKeys = new Set(seen.keys());
+	for (const key of expectedShapes) {
+		if (!seenKeys.has(key)) problems.push(`missing (kind, width) shape ${key}`);
+	}
+	for (const key of seenKeys) {
+		if (!expectedShapes.has(key)) {
+			problems.push(`unexpected (kind, width) shape ${key}`);
+		}
+	}
+
+	const tolerance = 0.01;
+	// The documented sliver bound, derived rather than hard-coded: the constant
+	// 2-unit candle width leaves at most one pitch minus a whole unit of leftover,
+	// half of it per side. For the spawner's widths the worst case is 1.0 unit (at
+	// w=4 and w=10; the others leave 0.5). Asserted so it can never silently grow.
+	const sliverBound = (CANDLE_PITCH - 1) / 2;
+	const bodyRoles = new Set(CANDLE_BODY_ROLES);
+	let partCount = 0;
+	let worstSliver = 0;
+	for (const o of seen.values()) {
+		for (let frame = 0; frame < OBSTACLE_FRAME_COUNT; frame++) {
+			const label = `${o.kind}/w${o.w}/frame${frame}`;
+			const parts = obstacleCandleParts({ ...o, frame });
+			if (parts.length === 0) {
+				problems.push(`${label}: no parts`);
+				continue;
+			}
+			partCount += parts.length;
+
+			// Wax colour: every candle's body colour must be in the palette, and
+			// neighbouring candles in a multi-candle row must differ (the per-candle
+			// tint offset is what guarantees it). The candle count is re-derived from the
+			// exported gap/pitch, so a layout change that merges or drops a candle fails.
+			const waxParts = parts
+				.filter((p) => p.role === "wax")
+				.sort((a, b) => a.x - b.x);
+			const expectedCount = Math.max(
+				1,
+				Math.floor((o.w + CANDLE_GAP) / CANDLE_PITCH),
+			);
+			if (waxParts.length !== expectedCount) {
+				problems.push(
+					`${label}: ${waxParts.length} candles != expected ${expectedCount}`,
+				);
+			}
+			for (let k = 0; k < waxParts.length; k++) {
+				if (!waxPalette.has(waxParts[k].color.toLowerCase())) {
+					problems.push(
+						`${label}: candle ${k} wax colour ${waxParts[k].color} not in WAX_COLORS`,
+					);
+				}
+				if (k > 0 && waxParts[k].color === waxParts[k - 1].color) {
+					problems.push(
+						`${label}: adjacent candles ${k - 1}/${k} share ${waxParts[k].color}`,
+					);
+				}
+				if (k > 0) {
+					// Gap: consecutive full-width masses are exactly CANDLE_GAP apart,
+					// derived from the exported body width and gap, not assumed.
+					const gap = waxParts[k].x - (waxParts[k - 1].x + CANDLE_BODY_WIDTH);
+					if (Math.abs(gap - CANDLE_GAP) > tolerance) {
+						problems.push(
+							`${label}: gap between candles ${k - 1}/${k} ${gap.toFixed(3)} != CANDLE_GAP ${CANDLE_GAP}`,
+						);
+					}
+				}
+			}
+
+			let waxMinX = Number.POSITIVE_INFINITY;
+			let waxMaxX = Number.NEGATIVE_INFINITY;
+			for (const p of parts) {
+				if (p.w <= 0 || p.h <= 0) {
+					problems.push(`${label}: ${p.role} is empty (${p.w}x${p.h})`);
+				}
+				if (p.x < o.x - tolerance || p.x + p.w > o.x + o.w + tolerance) {
+					problems.push(
+						`${label}: ${p.role} x ${p.x}..${p.x + p.w} outside ${o.x}..${o.x + o.w}`,
+					);
+				}
+				if (p.role === "wax" && Math.abs(p.w - CANDLE_BODY_WIDTH) > tolerance) {
+					problems.push(
+						`${label}: wax mass w ${p.w} != CANDLE_BODY_WIDTH ${CANDLE_BODY_WIDTH}`,
+					);
+				}
+				if (bodyRoles.has(p.role)) {
+					if (
+						Math.abs(p.y - o.y) > tolerance ||
+						Math.abs(p.y + p.h - (o.y + o.h)) > tolerance
+					) {
+						problems.push(
+							`${label}: ${p.role} y span ${p.y}..${p.y + p.h} != body ${o.y}..${o.y + o.h}`,
+						);
+					}
+					if (p.x < waxMinX) waxMinX = p.x;
+					if (p.x + p.w > waxMaxX) waxMaxX = p.x + p.w;
+				}
+			}
+			if (waxMinX !== Number.POSITIVE_INFINITY) {
+				const leftSliver = waxMinX - o.x;
+				const rightSliver = o.x + o.w - waxMaxX;
+				worstSliver = Math.max(worstSliver, leftSliver, rightSliver);
+				if (leftSliver > sliverBound + tolerance) {
+					problems.push(
+						`${label}: left wax sliver ${leftSliver.toFixed(3)} > ${sliverBound}`,
+					);
+				}
+				if (rightSliver > sliverBound + tolerance) {
+					problems.push(
+						`${label}: right wax sliver ${rightSliver.toFixed(3)} > ${sliverBound}`,
+					);
+				}
+			}
+		}
+	}
+
+	const pass = problems.length === 0;
+	const shapes = [...seenKeys].sort();
+	const kindsSeen = [
+		...new Set([...seen.keys()].map((key) => key.split(":")[0])),
+	].sort();
+	const detail = problems.length
+		? `${problems.slice(0, 8).join("; ")}${problems.length > 8 ? ` (+${problems.length - 8} more)` : ""}`
+		: `FLAME_VARIANTS ${FLAME_VARIANTS.length} == OBSTACLE_FRAME_COUNT ${OBSTACLE_FRAME_COUNT}; WAX_COLORS ${WAX_COLORS.length} == OBSTACLE_TINT_COUNT ${OBSTACLE_TINT_COUNT}; (kind, width) coverage exact: ${seenKeys.size}/${expectedShapes.size} expected shapes from ${steps} sim steps (kinds: ${kindsSeen.join(", ")}; shapes: ${shapes.join(", ")}); all ${tintsSeen.size}/${OBSTACLE_TINT_COUNT} tints observed (${[...tintsSeen].sort((a, b) => a - b).join(", ")}); ${partCount} parts checked across every frame: non-empty, horizontally inside the obstacle, every full-width wax mass w=${CANDLE_BODY_WIDTH} (constant candle width), consecutive candles exactly CANDLE_GAP=${CANDLE_GAP} apart, every wax colour in the palette with adjacent candles always different and no consecutive palette entries sharing a wax hex, every wax part spans exactly [o.y, o.y+o.h], and the wax union leaves at most ${sliverBound}u undrawn per side (worst sliver ${worstSliver.toFixed(3)}u). Every visible wax tone (wax + shade) clears 3:1 vs sky (binding tone ${worstWaxName} ${worstWaxSky.toFixed(2)}:1); worst wax vs ground ${worstWaxGround.toFixed(2)}:1.`;
+	return { name: "8. Obstacle candle art", pass, detail };
+}
+
 // --- run --------------------------------------------------------------------
 
 const airTime = measureAirTime();
@@ -746,6 +1054,7 @@ const resizeAssertion = resizeTest();
 const resizeWidening = resizeWideningTest();
 const verticalFit = verticalFitTest();
 const pose = poseTest();
+const obstacleArt = obstacleArtTest();
 const requiredAssertions: Assertion[] = [
 	purity,
 	spacing,
@@ -755,6 +1064,7 @@ const requiredAssertions: Assertion[] = [
 	resizeWidening,
 	verticalFit,
 	pose,
+	obstacleArt,
 ];
 const caveat = geometryCaveat(maxSpeed);
 const allPass = requiredAssertions.every((a) => a.pass);
@@ -786,6 +1096,6 @@ console.log("Tuning readout (read from runner.ts)");
 for (const [k, v] of tuningRows) console.log(`  ${k}: ${v}`);
 
 console.log(
-	`\nOverall (purity + spacing + warning + per-kind clearability + resize + vertical fit + pose model): ${allPass ? "PASS" : "FAIL"}`,
+	`\nOverall (purity + spacing + warning + per-kind clearability + resize + vertical fit + pose model + obstacle candle art): ${allPass ? "PASS" : "FAIL"}`,
 );
 process.exitCode = allPass ? 0 : 1;

@@ -22,6 +22,7 @@ import {
 	resolveGroundColor,
 	resolveGroundFarColor,
 } from "../lib/runner-ground";
+import { drawObstacle } from "../lib/runner-obstacles";
 import {
 	drawPlayerFrame,
 	PLAYER_DEAD_ALPHA,
@@ -485,15 +486,15 @@ export default function RunnerGame({
 			ctx.fill();
 			ctx.globalAlpha = 1;
 
-			// Obstacles: placeholder rectangles. One fillRect per rect, world units ->
-			// CSS px. The player is a multi-colour sprite now; the obstacles' art is
-			// still unbuilt.
-			ctx.globalAlpha = 0.7;
-			ctx.fillStyle = color;
+			// Obstacles: flickering candles, drawn opaque in `s.obstacles` order. The body
+			// is the collider from `runner.ts`; `drawObstacle` maps the shared
+			// `obstacleCandleParts` world-unit layout (see `runner-obstacles.ts`) to one
+			// filled rect per part, tinted from the obstacle's seeded `tint`, and the flame
+			// animation comes from each obstacle's simulated `frame`, so the candles
+			// freeze with the world.
 			for (const o of s.obstacles) {
-				ctx.fillRect(o.x * px, o.y * px, o.w * px, o.h * px);
+				drawObstacle(ctx, o, px);
 			}
-			ctx.globalAlpha = 1;
 
 			// Player: the cut sprite sheet, drawn at its own resolution and scaled
 			// into the 16x22 world box. Images load asynchronously, so a frame is
@@ -807,7 +808,7 @@ export default function RunnerGame({
 			tapTarget.removeEventListener("pointercancel", onPointerCancel);
 			document.removeEventListener("visibilitychange", onVisibility);
 		};
-	}, [eventId, color, groundColor, groundFarColor]);
+	}, [eventId, groundColor, groundFarColor]);
 
 	return (
 		<>
