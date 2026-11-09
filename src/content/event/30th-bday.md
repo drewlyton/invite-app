@@ -3,7 +3,7 @@ title: Drew's 30th Birthday
 subtitle: A Game Night To Remember
 date: January 16th, 2027
 time: 2:30 pm - 6:00 pm
-location: TBD in Charlottesville, VA
+location: 2208 Banbury St, Charlottesville, VA
 rsvp_by: December 17th, 2026
 theme: game-night-light
 start: "2027-01-16T14:30:00-05:00"
