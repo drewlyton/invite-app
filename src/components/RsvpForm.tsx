@@ -4,9 +4,16 @@ import { type SubmitEvent, useState } from "react";
 
 interface Props {
 	eventId: string;
+	/**
+	 * Optional opt-in activity (e.g. a game after the party). When present, the
+	 * form asks a yes/no question about it; the answer is optional and can be
+	 * cleared by clicking the selected answer again.
+	 */
+	sideActivity?: { question: string; time: string };
 }
 
 type Status = "going" | "not-going";
+type Answer = "yes" | "no";
 
 function fireConfetti() {
 	const duration = 1500;
@@ -34,13 +41,14 @@ function fireConfetti() {
 	})();
 }
 
-export default function RsvpForm({ eventId }: Props) {
+export default function RsvpForm({ eventId, sideActivity }: Props) {
 	const [status, setStatus] = useState<Status>("going");
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
 	const [partySize, setPartySize] = useState(1);
 	const [dietary, setDietary] = useState("");
 	const isJustMe = partySize === 1;
+	const [activity, setActivity] = useState<Answer | null>(null);
 	const [notes, setNotes] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [submitted, setSubmitted] = useState(false);
@@ -58,6 +66,7 @@ export default function RsvpForm({ eventId }: Props) {
 			body.email = email;
 			body.party_size = partySize;
 			if (dietary) body.dietary = dietary;
+			if (activity) body.side_activity = activity;
 			if (notes) body.notes = notes;
 		}
 
@@ -272,6 +281,44 @@ export default function RsvpForm({ eventId }: Props) {
 								)}
 							</div>
 						</div>
+
+						{sideActivity && (
+							<div>
+								<span className="block text-sm text-stone-600">
+									{sideActivity.question}
+								</span>
+								<p className="mt-0.5 text-sm text-stone-400">
+									{sideActivity.time} · optional
+								</p>
+								<div className="mt-2 grid grid-cols-2 gap-2">
+									{(
+										[
+											{ value: "yes", label: "I'm in" },
+											{ value: "no", label: "I'll pass" },
+										] as const
+									).map((option) => (
+										<button
+											key={option.value}
+											type="button"
+											aria-pressed={activity === option.value}
+											onClick={() =>
+												setActivity((current) =>
+													current === option.value ? null : option.value,
+												)
+											}
+											disabled={submitting}
+											className={`rounded-xl border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+												activity === option.value
+													? "border-stone-900 text-stone-900"
+													: "border-stone-200 text-stone-500 hover:border-stone-400 hover:text-stone-700"
+											}`}
+										>
+											{option.label}
+										</button>
+									))}
+								</div>
+							</div>
+						)}
 
 						<div>
 							<label

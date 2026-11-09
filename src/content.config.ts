@@ -22,6 +22,16 @@ const event = defineCollection({
 		// Additional host notification emails for this event. Merged
 		// with the global HOST_NOTIFICATION_EMAILS env var at send time.
 		hosts: z.array(z.email()).optional(),
+		// Optional second activity guests can opt into on top of the event
+		// itself (e.g. a game after dinner). Renders as a yes/no question in
+		// the RSVP form; guests may skip it, in which case no answer is
+		// recorded. Omit the field entirely for events without one.
+		side_activity: z
+			.object({
+				question: z.string(),
+				time: z.string(),
+			})
+			.optional(),
 	}),
 });
 

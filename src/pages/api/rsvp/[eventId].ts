@@ -67,6 +67,10 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 				typeof data.dietary === "string" && data.dietary.trim()
 					? data.dietary
 					: undefined;
+			const activity =
+				data.side_activity === "yes" || data.side_activity === "no"
+					? data.side_activity
+					: undefined;
 			const notes =
 				typeof data.notes === "string" && data.notes.trim()
 					? data.notes
@@ -89,6 +93,7 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 				eventUrl,
 				partySize,
 				dietary,
+				activity,
 				notes,
 			})
 				.then((result) => {
@@ -126,6 +131,10 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 					typeof data.dietary === "string" && data.dietary.trim()
 						? data.dietary
 						: undefined;
+				const activity =
+					data.side_activity === "yes" || data.side_activity === "no"
+						? data.side_activity
+						: undefined;
 				const notes =
 					typeof data.notes === "string" && data.notes.trim()
 						? data.notes
@@ -146,6 +155,7 @@ export const POST: APIRoute = async ({ request, params, url }) => {
 					guestEmail,
 					partySize,
 					dietary,
+					activity,
 					notes,
 					event: {
 						id: event.id,

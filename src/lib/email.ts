@@ -8,6 +8,8 @@ export interface RsvpEmailInput {
 	eventUrl: string;
 	partySize: number;
 	dietary?: string;
+	/** Answer to the event's optional side activity, when the guest gave one. */
+	activity?: "yes" | "no";
 	notes?: string;
 }
 
@@ -47,7 +49,7 @@ function esc(s: string): string {
 }
 
 function buildHtml(input: RsvpEmailInput): string {
-	const { name, event, partySize, dietary, notes } = input;
+	const { name, event, partySize, dietary, activity, notes } = input;
 	const safeName = esc(name);
 	const safeTitle = esc(event.title);
 	const safeLocation = esc(event.location);
@@ -55,6 +57,8 @@ function buildHtml(input: RsvpEmailInput): string {
 	const safeTime = esc(event.time);
 	const safeDietary = dietary ? esc(dietary) : "";
 	const safeNotes = notes ? esc(notes) : "";
+	const activityLine =
+		activity === "yes" ? "Yes" : activity === "no" ? "No" : "";
 
 	const partyLine =
 		partySize === 1
@@ -75,6 +79,7 @@ function buildHtml(input: RsvpEmailInput): string {
 				<tr><td style="padding-right:12px;color:#78716c;">Where</td><td>${safeLocation}</td></tr>
 				<tr><td style="padding-right:12px;color:#78716c;">Party</td><td>${partyLine}</td></tr>
 				${safeDietary ? `<tr><td style="padding-right:12px;color:#78716c;">Dietary</td><td>${safeDietary}</td></tr>` : ""}
+				${activityLine ? `<tr><td style="padding-right:12px;color:#78716c;">Optional activity</td><td>${activityLine}</td></tr>` : ""}
 				${safeNotes ? `<tr><td style="padding-right:12px;color:#78716c;vertical-align:top;">Notes</td><td>${safeNotes}</td></tr>` : ""}
 			</table>
 		</div>
@@ -98,7 +103,7 @@ function buildHtml(input: RsvpEmailInput): string {
 }
 
 function buildText(input: RsvpEmailInput): string {
-	const { name, event, partySize, dietary, notes } = input;
+	const { name, event, partySize, dietary, activity, notes } = input;
 	const partyLine =
 		partySize === 1
 			? "Just you"
@@ -113,6 +118,7 @@ function buildText(input: RsvpEmailInput): string {
 		`  Where: ${event.location}`,
 		`  Party: ${partyLine}`,
 		dietary ? `  Dietary: ${dietary}` : "",
+		activity ? `  Optional activity: ${activity}` : "",
 		notes ? `  Notes: ${notes}` : "",
 		"",
 		`An .ics calendar invite is attached — open it to add this to your calendar.`,
@@ -180,12 +186,23 @@ export interface HostNotificationInput {
 	guestEmail?: string;
 	partySize: number;
 	dietary?: string;
+	/** Answer to the event's optional side activity, when the guest gave one. */
+	activity?: "yes" | "no";
 	notes?: string;
 	event: EventForIcs;
 }
 
 function buildHostHtml(input: HostNotificationInput): string {
-	const { name, status, guestEmail, partySize, dietary, notes, event } = input;
+	const {
+		name,
+		status,
+		guestEmail,
+		partySize,
+		dietary,
+		activity,
+		notes,
+		event,
+	} = input;
 	const isGoing = status === "going";
 	const statusLabel = isGoing
 		? `<span style="color:#15803d;font-weight:600;">Going</span>`
@@ -197,6 +214,8 @@ function buildHostHtml(input: HostNotificationInput): string {
 	const safeEmail = guestEmail ? esc(guestEmail) : "";
 	const safeDietary = dietary ? esc(dietary) : "";
 	const safeNotes = notes ? esc(notes).replace(/\n/g, "<br>") : "";
+	const safeActivity =
+		activity === "yes" ? "Yes" : activity === "no" ? "No" : "";
 	const partyLine =
 		partySize === 1
 			? "1"
@@ -207,6 +226,7 @@ function buildHostHtml(input: HostNotificationInput): string {
 				<tr><td style="padding-right:12px;color:#78716c;">Email</td><td><a href="mailto:${safeEmail}" style="color:#1c1917;">${safeEmail}</a></td></tr>
 				<tr><td style="padding-right:12px;color:#78716c;">Party</td><td>${partyLine}</td></tr>
 				${safeDietary ? `<tr><td style="padding-right:12px;color:#78716c;">Dietary</td><td>${safeDietary}</td></tr>` : `<tr><td style="padding-right:12px;color:#78716c;">Dietary</td><td style="color:#a8a29e;">none</td></tr>`}
+				${safeActivity ? `<tr><td style="padding-right:12px;color:#78716c;">Optional activity</td><td>${safeActivity}</td></tr>` : `<tr><td style="padding-right:12px;color:#78716c;">Optional activity</td><td style="color:#a8a29e;">no answer</td></tr>`}
 				${safeNotes ? `<tr><td style="padding-right:12px;color:#78716c;vertical-align:top;">Notes</td><td>${safeNotes}</td></tr>` : ""}
 			</table>
 			<p style="margin:16px 0 0;font-size:13px;color:#78716c;">Reply to this email to respond directly to the guest.</p>`
@@ -230,7 +250,16 @@ function buildHostHtml(input: HostNotificationInput): string {
 }
 
 function buildHostText(input: HostNotificationInput): string {
-	const { name, status, guestEmail, partySize, dietary, notes, event } = input;
+	const {
+		name,
+		status,
+		guestEmail,
+		partySize,
+		dietary,
+		activity,
+		notes,
+		event,
+	} = input;
 	const statusLabel = status === "going" ? "Going" : "Can't make it";
 	const lines = [
 		`New RSVP for ${event.title}`,
@@ -242,6 +271,7 @@ function buildHostText(input: HostNotificationInput): string {
 		lines.push(`  Email:  ${guestEmail ?? "(not provided)"}`);
 		lines.push(`  Party:  ${partySize}`);
 		lines.push(`  Dietary: ${dietary || "none"}`);
+		lines.push(`  Optional activity: ${activity ?? "no answer"}`);
 		if (notes) lines.push(`  Notes: ${notes}`);
 		lines.push("");
 		lines.push("Reply to this email to respond directly to the guest.");
