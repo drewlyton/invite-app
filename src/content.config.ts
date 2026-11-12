@@ -1,6 +1,7 @@
 import { defineCollection } from "astro:content";
 import { glob } from "astro/loaders";
 import { z } from "astro/zod";
+import { TITLE_ART_NAMES } from "./lib/title-art";
 
 const event = defineCollection({
 	loader: glob({ base: "./src/content/event", pattern: "**/*.{md,mdx}" }),
@@ -12,6 +13,11 @@ const event = defineCollection({
 		location: z.string(),
 		rsvp_by: z.string(),
 		theme: z.string().optional(),
+		// Optional pixel-art lockup to render in place of the plain-text `title`
+		// in the hero heading. The `title` is still required: it names the page,
+		// carries `og:title`, and becomes the heading's accessible name, so the
+		// art is presentation only. Omit the field for the normal text heading.
+		title_art: z.enum(TITLE_ART_NAMES).optional(),
 		// ISO 8601 datetime WITH timezone offset, e.g.
 		// "2026-09-26T16:00:00-04:00". Required for the .ics calendar
 		// invite (the display `date`/`time` strings above are kept for

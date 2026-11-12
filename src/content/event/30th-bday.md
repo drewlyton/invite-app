@@ -6,6 +6,7 @@ time: 2:30 pm - 6:00 pm
 location: 2208 Banbury St, Charlottesville, VA
 rsvp_by: December 17th, 2026
 theme: game-night-light
+title_art: drew-30th
 start: "2027-01-16T14:30:00-05:00"
 end: "2027-01-16T18:00:00-05:00"
 side_activity:

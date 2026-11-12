@@ -1,0 +1,178 @@
+---
+import type { TitleArtName } from "../lib/title-art";
+
+/**
+ * The pixel-art lockups that can stand in for an event's plain-text `title`.
+ *
+ * An event opts in through `title_art` in its frontmatter; `Invite.astro` then
+ * renders one of these inside the `<h1>` instead of the title string. The art is
+ * presentational only: each lockup also renders the event's `title` as `sr-only`
+ * text, so the heading, the page title and `og:title` all still read the words
+ * even though nothing on screen does.
+ *
+ * Each lockup is inline SVG rather than a file under `public/` so the glyphs can
+ * take their colour from `currentColor`: the theme's accent then drives the art
+ * exactly as it drove the heading text.
+ *
+ * `drew-30th` is drawn to be read as centred on the `DREW'S` / `30` / `B'DAY`
+ * stack, with the `TH` hanging off the right of the `30` rather than counting
+ * towards the width. The rows do not share a centre in the source artwork (the
+ * `30` sits ~4.96 units left of the two words), so the `30` and `TH` groups are
+ * translated right by 4.96 units to bring all three onto one axis. The viewBox
+ * is then cut tight to that stack, which leaves the `TH` outside it, painted by
+ * `overflow: visible` in the stylesheet.
+ */
+
+interface Props {
+	name: TitleArtName;
+	/**
+	 * The words the art spells out, taken from the event's `title`. Rendered
+	 * `sr-only` beside the artwork so the heading they sit in is named by the
+	 * sentence and not by nothing at all.
+	 */
+	label: string;
+}
+
+const { name, label } = Astro.props;
+---
+
+{name === "drew-30th" && (
+	<>
+		<span class="sr-only">{label}</span>
+		<svg
+			class="title-art block"
+			viewBox="4.9607 0 126.1419 135"
+			fill="currentColor"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<g transform="matrix(1,0,0,1,-73.700787,-77.102362)">
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M341.429,322L341.429,272L377.143,272L377.143,279.143L384.286,279.143L384.286,286.286L391.429,286.286L391.429,307.714L384.286,307.714L384.286,314.857L377.143,314.857L377.143,322L341.429,322ZM355.714,314.857L370,314.857L370,307.714L377.143,307.714L377.143,286.286L370,286.286L370,279.143L355.714,279.143L355.714,314.857Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M400.571,322L400.571,272L443.429,272L443.429,279.143L450.571,279.143L450.571,300.571L436.286,300.571L436.286,307.714L443.429,307.714L443.429,314.857L450.571,314.857L450.571,322L429.143,322L429.143,314.857L422,314.857L422,307.714L414.857,307.714L414.857,322L400.571,322ZM414.857,300.571L429.143,300.571L429.143,293.429L436.286,293.429L436.286,279.143L414.857,279.143L414.857,300.571Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M459.714,322L459.714,272L509.714,272L509.714,279.143L474,279.143L474,293.429L502.571,293.429L502.571,300.571L474,300.571L474,314.857L509.714,314.857L509.714,322L459.714,322Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M526,322L526,314.857L518.857,314.857L518.857,272L533.143,272L533.143,300.571L540.286,300.571L540.286,272L547.429,272L547.429,300.571L554.571,300.571L554.571,272L568.857,272L568.857,314.857L561.714,314.857L561.714,322L554.571,322L554.571,314.857L547.429,314.857L547.429,307.714L540.286,307.714L540.286,314.857L533.143,314.857L533.143,322L526,322Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<rect
+						x="592.286"
+						y="272"
+						width="14.286"
+						height="21.429"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M615.714,322L615.714,314.857L608.571,314.857L608.571,307.714L622.857,307.714L622.857,314.857L644.286,314.857L644.286,300.571L615.714,300.571L615.714,293.429L608.571,293.429L608.571,279.143L615.714,279.143L615.714,272L651.429,272L651.429,279.143L658.571,279.143L658.571,286.286L644.286,286.286L644.286,279.143L622.857,279.143L622.857,293.429L651.429,293.429L651.429,300.571L658.571,300.571L658.571,314.857L651.429,314.857L651.429,322L615.714,322Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				{/* The `30` and its `TH`, translated onto the words' centre. See
+				    the top of the file for why 4.9606, and why `TH` moves too. */}
+				<g transform="matrix(0.283465,0,0,0.283465,4.9606,0)">
+					<path
+						d="M302,350L428,350L428,363L442,363L442,376L455,376L455,389L470,389L470,474L457,474L457,488L444,488L444,512L457,512L457,526L470,526L470,611L455,611L455,624L442,624L442,637L428,637L428,650L302,650L302,637L288,637L288,624L275,624L275,611L260,611L260,545L326,545L326,585L397,585L397,534L337,534L337,468L397,468L397,415L326,415L326,455L260,455L260,389L275,389L275,376L288,376L288,363L302,363L302,350Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,4.9606,0)">
+					<path
+						d="M537,350L663,350L663,363L677,363L677,376L690,376L690,389L705,389L705,611L690,611L690,624L677,624L677,637L663,637L663,650L537,650L537,637L523,637L523,624L510,624L510,611L495,611L495,389L510,389L510,376L523,376L523,363L537,363L537,350ZM560,415L560,585L640,585L640,415L560,415Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,4.9606,0)">
+					<path
+						d="M737.857,450L737.857,411.429L725,411.429L725,405L763.571,405L763.571,411.429L750.714,411.429L750.714,450L737.857,450Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,4.9606,0)">
+					<path
+						d="M771.5,450L771.5,405L784.357,405L784.357,424.286L803.643,424.286L803.643,405L816.5,405L816.5,450L803.643,450L803.643,430.714L784.357,430.714L784.357,450L771.5,450Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M357.5,745L357.5,690L404.643,690L404.643,697.857L412.5,697.857L412.5,713.571L404.643,713.571L404.643,721.429L412.5,721.429L412.5,737.143L404.643,737.143L404.643,745L357.5,745ZM373.214,713.571L396.786,713.571L396.786,697.857L373.214,697.857L373.214,713.571ZM373.214,737.143L396.786,737.143L396.786,721.429L373.214,721.429L373.214,737.143Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<rect
+						x="438.571"
+						y="690"
+						width="15.714"
+						height="23.571"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M456.786,745L456.786,690L496.071,690L496.071,697.857L503.929,697.857L503.929,705.714L511.786,705.714L511.786,729.286L503.929,729.286L503.929,737.143L496.071,737.143L496.071,745L456.786,745ZM472.5,737.143L488.214,737.143L488.214,729.286L496.071,729.286L496.071,705.714L488.214,705.714L488.214,697.857L472.5,697.857L472.5,737.143Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M522.143,745L522.143,705.714L530,705.714L530,697.857L537.857,697.857L537.857,690L561.429,690L561.429,697.857L569.286,697.857L569.286,705.714L577.143,705.714L577.143,745L561.429,745L561.429,729.286L537.857,729.286L537.857,745L522.143,745ZM537.857,721.429L561.429,721.429L561.429,705.714L553.571,705.714L553.571,697.857L545.714,697.857L545.714,705.714L537.857,705.714L537.857,721.429Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+				<g transform="matrix(0.283465,0,0,0.283465,0,0)">
+					<path
+						d="M611.071,745L611.071,721.429L603.214,721.429L603.214,713.571L595.357,713.571L595.357,690L611.071,690L611.071,713.571L626.786,713.571L626.786,690L642.5,690L642.5,713.571L634.643,713.571L634.643,721.429L626.786,721.429L626.786,745L611.071,745Z"
+						fill-rule="nonzero"
+					/>
+				</g>
+			</g>
+		</svg>
+	</>
+)}
+
+<style>
+/* The box is tight around the `DREW'S` / `30` / `B'DAY` stack, and the `TH`
+   overhang paints outside it. That is what keeps the stack optically centred:
+   widening the viewBox to hold the overhang would make the browser centre a box
+   whose mass sits left of its centre, which is the misalignment this avoids.
+   Nothing on the hero clips the overhang, and it stays inside the page's side
+   padding at every size the rules below allow.
+
+   Sized against both viewport axes, because the height follows from the width
+   through the viewBox ratio: `50vw` carries a phone, `17.5rem` stops the stack
+   growing past the heading it replaces on a desktop, and `56svh` is the ceiling
+   the resulting height has to respect. The short-viewport rule steps all three
+   down, because there the runner band, the eyebrow and the subtitle leave the
+   least room above the fold. */
+.title-art {
+	width: min(50vw, 17.5rem, 56svh);
+	height: auto;
+	overflow: visible;
+}
+
+@media (max-height: 639px) {
+	.title-art {
+		width: min(46vw, 14.5rem, 37svh);
+	}
+}
+</style>
