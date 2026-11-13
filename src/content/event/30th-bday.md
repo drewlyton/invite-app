@@ -13,4 +13,5 @@ side_activity:
   question: Want to stick around for a D&D one-shot?
   blurb: Stick around for a D&D one-shot
   time: 7:00 pm - 10:00 pm
+notes_label: Anything else? Favorite childhood game?
 ---

@@ -28,6 +28,11 @@ const event = defineCollection({
 		// Additional host notification emails for this event. Merged
 		// with the global HOST_NOTIFICATION_EMAILS env var at send time.
 		hosts: z.array(z.email()).optional(),
+		// Optional label for the free-text "notes" field in the RSVP form.
+		// Lets an event ask its own question there ("Anything else? Favorite
+		// childhood game?") instead of the generic "Notes". Omit it for the
+		// default label.
+		notes_label: z.string().optional(),
 		// Optional second activity guests can opt into on top of the event
 		// itself (e.g. a game after dinner). Renders as a yes/no question in
 		// the RSVP form; guests may skip it, in which case no answer is
