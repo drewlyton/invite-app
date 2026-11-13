@@ -10,6 +10,8 @@ interface Props {
 	 * cleared by clicking the selected answer again.
 	 */
 	sideActivity?: { question: string; time: string };
+	/** Label for the optional free-text notes field. Falls back to "Notes". */
+	notesLabel?: string;
 }
 
 type Status = "going" | "not-going";
@@ -41,7 +43,11 @@ function fireConfetti() {
 	})();
 }
 
-export default function RsvpForm({ eventId, sideActivity }: Props) {
+export default function RsvpForm({
+	eventId,
+	sideActivity,
+	notesLabel = "Notes",
+}: Props) {
 	const [status, setStatus] = useState<Status>("going");
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
@@ -325,7 +331,7 @@ export default function RsvpForm({ eventId, sideActivity }: Props) {
 								htmlFor="rsvp-dietary"
 								className="block text-sm text-stone-600"
 							>
-								Dietary restrictions
+								Any dietary restrictions?
 							</label>
 							<input
 								id="rsvp-dietary"
@@ -343,7 +349,7 @@ export default function RsvpForm({ eventId, sideActivity }: Props) {
 								htmlFor="rsvp-notes"
 								className="block text-sm text-stone-600"
 							>
-								Notes
+								{notesLabel}
 							</label>
 							<textarea
 								id="rsvp-notes"
