@@ -35,6 +35,11 @@ const event = defineCollection({
 		side_activity: z
 			.object({
 				question: z.string(),
+				// Optional one-liner for the printable invite. The RSVP form
+				// asks `question`; a printed card reads as an invitation, so it
+				// can phrase the same activity as a statement instead
+				// ("Stick around for a D&D one-shot"). Falls back to `question`.
+				blurb: z.string().optional(),
 				time: z.string(),
 			})
 			.optional(),

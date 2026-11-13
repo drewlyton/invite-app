@@ -1,5 +1,6 @@
 ---
 import type { CollectionEntry } from "astro:content";
+import moonUrl from "../assets/moon.svg?url";
 import {
 	GROUND_FILL_ALPHA,
 	GROUND_TEXTURE_CSS_SCALE,
@@ -181,7 +182,7 @@ const groundGrainStyle = groundColor
 		aria-hidden="true"
 	>
 		<div class="hero-moonlight absolute inset-0"></div>
-		<img src="/moon/moon.svg" alt="" class="hero-moon absolute" />
+		<img src={moonUrl} alt="" class="hero-moon absolute" />
 	</div>
 )}
 

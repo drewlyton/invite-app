@@ -21,6 +21,11 @@ import type { TitleArtName } from "../lib/title-art";
  * translated right by 4.96 units to bring all three onto one axis. The viewBox
  * is then cut tight to that stack, which leaves the `TH` outside it, painted by
  * `overflow: visible` in the stylesheet.
+ *
+ * `variant` picks the sizing contract. `hero` (the default) sizes the lockup
+ * against the viewport, because it has to share a full-screen hero with the
+ * runner band. `print` hands sizing to its container instead, because the
+ * printable poster is a fixed-size sheet with no viewport to answer to.
  */
 
 interface Props {
@@ -31,16 +36,20 @@ interface Props {
 	 * sentence and not by nothing at all.
 	 */
 	label: string;
+	variant?: "hero" | "print";
 }
 
-const { name, label } = Astro.props;
+const { name, label, variant = "hero" } = Astro.props;
+
+const artClass =
+	variant === "print" ? "title-art title-art-print" : "title-art";
 ---
 
 {name === "drew-30th" && (
 	<>
 		<span class="sr-only">{label}</span>
 		<svg
-			class="title-art block"
+			class={`${artClass} block`}
 			viewBox="4.9607 0 126.1419 135"
 			fill="currentColor"
 			aria-hidden="true"
@@ -170,8 +179,16 @@ const { name, label } = Astro.props;
 	overflow: visible;
 }
 
+/* Print sizing is the poster's to decide: it sets the width on the lockup's
+   wrapper and the art fills it. The `TH` overhang still needs room, which the
+   poster's side padding provides. */
+.title-art-print {
+	width: 100%;
+	max-width: none;
+}
+
 @media (max-height: 639px) {
-	.title-art {
+	.title-art:not(.title-art-print) {
 		width: min(46vw, 14.5rem, 37svh);
 	}
 }

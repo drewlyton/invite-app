@@ -1,0 +1,39 @@
+<svg
+	xmlns="http://www.w3.org/2000/svg"
+	viewBox="0 0 30 13"
+	shape-rendering="crispEdges"
+	preserveAspectRatio="xMidYMid meet"
+>
+	<!--
+		The filled footprint of `cloud-small.svg`, used only to knock the moon
+		out from under a cloud on the printed invite.
+
+		The cloud itself is drawn with the outline art, exactly as it is in the
+		hero. But that art is hollow inside — it sits on a painted sky, which
+		fills its middle — and a printed card has no sky to fill it with, so a
+		hollow cloud passing in front of the moon would let the moon's rim show
+		through its middle. `PrintPoster.astro` therefore masks the moon with
+		this solid shape, which is the outline art's outer footprint filled in.
+		The result is an outline cloud in front of the disc with no moon ink
+		showing through it.
+
+		Only the shape matters: every rect is opaque black, and the asset is
+		only ever used as a mask. Keep the bounding box at 30×13, the same as
+		the outline art, so the two size and position identically.
+	-->
+	<title>Pixel cloud silhouette</title>
+	<g fill="#000000">
+		<rect x="11" y="2" width="6" height="1" />
+		<rect x="9" y="3" width="10" height="1" />
+		<rect x="7" y="4" width="14" height="1" />
+		<rect x="6" y="5" width="17" height="1" />
+		<rect x="20" y="5" width="5" height="1" />
+		<rect x="4" y="6" width="22" height="1" />
+		<rect x="3" y="7" width="24" height="1" />
+		<rect x="2" y="8" width="25" height="1" />
+		<rect x="2" y="9" width="25" height="1" />
+		<rect x="3" y="10" width="24" height="1" />
+		<rect x="4" y="11" width="23" height="1" />
+		<rect x="5" y="12" width="21" height="1" />
+	</g>
+</svg>

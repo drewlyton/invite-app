@@ -7,6 +7,11 @@ import { defineConfig } from "astro/config";
 
 // https://astro.build/config
 export default defineConfig({
+	// Canonical origin. The printed invite's QR code is built from it, so a
+	// sheet printed from a dev server or a preview host still points guests at
+	// the real site instead of at localhost.
+	site: "https://events.drewlyton.com",
+
 	output: "server",
 
 	adapter: node({

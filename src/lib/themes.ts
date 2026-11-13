@@ -15,7 +15,7 @@ export type Theme = {
 	 * Opt in to a moon in the hero's top-right corner and the light it casts
 	 * across that corner. `glow` is the colour of that light, painted as a radial
 	 * gradient centred on the moon; the moon's own art lives in
-	 * `public/moon/moon.svg`, which carries its own palette the way the pixel
+	 * `src/assets/moon.svg`, which carries its own palette the way the pixel
 	 * clouds do.
 	 */
 	moon: { glow: string } | null;
@@ -102,7 +102,7 @@ export const themes: Record<string, Theme> = {
 		// A near-white moon whose light is the hero's brightest point. `glow` is
 		// mixed down to transparent in `Invite.astro` to make the radial falloff,
 		// so it is the one colour here that has to stay light; the disc's own
-		// palette is in `public/moon/moon.svg`.
+		// palette is in `src/assets/moon.svg`.
 		moon: { glow: "#ffffff" },
 		detailsBelowFold: true,
 		runner: {
@@ -152,4 +152,43 @@ export const themes: Record<string, Theme> = {
 
 export function resolveTheme(id: string | undefined): Theme {
 	return themes[id ?? "default"] ?? themes.default;
+}
+
+/**
+ * The single ink a printed artefact paints with.
+ *
+ * Print is the one surface this app renders that has no background of its own:
+ * the sheet is transparent and the paper shows through, so every mark on it has
+ * to be one dark ink that reads on whatever stock the host loaded. The theme's
+ * `heroText` is the natural candidate — it is already the colour the details
+ * are set in — but a theme built for a dark sky sets it to white, which prints
+ * as nothing. Light text therefore falls back to stone-900.
+ *
+ * `accent` is deliberately not considered: on screen it is a highlight (the
+ * game-night theme's yellow), not something that can carry a poster's type and
+ * QR code. The poster's own ink is its only colour, exactly as a one-colour
+ * print job would be.
+ */
+export function resolvePrintInk(theme: Theme): string {
+	return relativeLuminance(theme.heroText) < 0.5 ? theme.heroText : "#1c1917";
+}
+
+/** WCAG relative luminance, used only to decide whether `heroText` is ink. */
+function relativeLuminance(hex: string): number {
+	const normalized = hex.replace("#", "");
+	const value =
+		normalized.length === 3
+			? normalized
+					.split("")
+					.map((c) => c + c)
+					.join("")
+			: normalized;
+	if (!/^[0-9a-f]{6}$/i.test(value)) return 0;
+	const channels = [0, 2, 4].map((offset) => {
+		const channel = Number.parseInt(value.slice(offset, offset + 2), 16) / 255;
+		return channel <= 0.04045
+			? channel / 12.92
+			: ((channel + 0.055) / 1.055) ** 2.4;
+	});
+	return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }

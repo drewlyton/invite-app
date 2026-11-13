@@ -1,0 +1,576 @@
+---
+import type { CollectionEntry } from "astro:content";
+import Calendar from "@lucide/astro/icons/calendar";
+import Clock from "@lucide/astro/icons/clock";
+import Dices from "@lucide/astro/icons/dices";
+import MapPin from "@lucide/astro/icons/map-pin";
+import moonArt from "../assets/moon.svg?raw";
+import { groundTextureCssUrl } from "../lib/runner-ground";
+import { resolvePrintInk, type Theme } from "../lib/themes";
+import TitleArt from "./TitleArt.astro";
+
+/**
+ * The printable version of an event invite: a 5:7 (5in × 7in) card laid out to
+ * be read on paper rather than scrolled.
+ *
+ * It is deliberately not the hero in miniature. The hero spreads its words
+ * across a viewport and hides the rest below the fold; a printed card has one
+ * fixed frame and has to carry every detail the guest needs — date, time,
+ * place, the side activity, the RSVP deadline — plus a QR code that takes them
+ * to the form. What it borrows from the hero is the look: the same pixel
+ * lockup, the same pixel clouds, star specks, dirt texture and ground line,
+ * the same two theme fonts.
+ *
+ * The card paints *no background*. Everything on it is one ink, so a printer
+ * puts the marks straight onto whatever paper is loaded. That is why the QR
+ * code's light modules and the sky decorations are transparent rather than
+ * white: the paper is the light half of every contrast pair on this sheet.
+ * `resolvePrintInk` picks the ink; see its note in `src/lib/themes.ts`.
+ *
+ * Every length below is in `cqw` — 1% of the card's width — because the sheet
+ * is a fixed aspect ratio and the preview has to shrink onto a phone without
+ * any of its proportions drifting. 1cqw is 4.8px on the 5in-wide print.
+ */
+interface Props {
+	event: CollectionEntry<"event">;
+	theme: Theme;
+	/**
+	 * The QR code, already rasterised to an SVG string by `uqr` for the event
+	 * page's RSVP URL. It is built by the page rather than here because the URL
+	 * it encodes depends on the request's origin.
+	 */
+	qrSvg: string;
+	/** Accessible description of the QR target. */
+	qrAlt: string;
+}
+
+const { event, theme, qrSvg, qrAlt } = Astro.props;
+const {
+	title,
+	title_art,
+	subtitle,
+	date,
+	time,
+	location,
+	rsvp_by,
+	side_activity,
+} = event.data;
+
+const ink = resolvePrintInk(theme);
+const groundTexture = groundTextureCssUrl(ink);
+
+// The moon art is drawn for the sky: a white face, a grey rim and lighter
+// crags. Print has no white to paint with, so the face drops out and the three
+// greys become the poster's ink at three weights — solid rim, lighter crags.
+// The geometry is the hero's own file, recoloured at build time, so the
+// poster's moon is literally the hero's moon.
+const inkMoon = moonArt
+	.replace("<title>Pixel moon</title>", "")
+	.replaceAll('fill="#ffffff"', 'fill="none"')
+	.replaceAll('fill="#a8a29e"', 'fill="currentColor"')
+	.replaceAll('fill="#d6d3d1"', 'fill="currentColor" fill-opacity="0.6"')
+	.replaceAll('fill="#e7e5e4"', 'fill="currentColor" fill-opacity="0.4"');
+
+// Star specks, as percentages of the card, echoing the hero's star field. They
+// are kept out of the middle column and away from the type, so nothing in the
+// layout has to read through one. The first few sit in the sky around the
+// eyebrow; the rest trace the margins down either side.
+const stars = [
+	{ x: 9, y: 4, large: false },
+	{ x: 21, y: 8.5, large: false },
+	{ x: 36, y: 3, large: true },
+	{ x: 63, y: 4.5, large: false },
+	{ x: 73, y: 7, large: true },
+	{ x: 5, y: 17, large: true },
+	{ x: 95, y: 20, large: false },
+	{ x: 8, y: 30, large: false },
+	{ x: 92, y: 33, large: true },
+	{ x: 13, y: 44, large: false },
+	{ x: 87, y: 47, large: false },
+	{ x: 6, y: 58, large: true },
+	{ x: 94, y: 61, large: false },
+	{ x: 11, y: 72, large: false },
+	{ x: 89, y: 75, large: true },
+];
+---
+
+<div class="poster" data-print-poster>
+	{/* Sky furniture: the same two elements the hero's theme opts into. Ink at
+	   low opacity, so it reads as a printed tint rather than a painted sky.
+	   Masked to `currentColor` rather than used as `<img>`, because the cloud
+	   art carries its own light palette for the screen hero and only its shape
+	   transfers to paper. A theme without clouds or stars prints without them,
+	   exactly as it renders without them on screen. */}
+	<div class="poster-sky" aria-hidden="true">
+		{theme.moon && (
+	<div
+		class:list={[
+			"poster-moon-corner",
+			theme.clouds && "poster-moon-corner-clouded",
+		]}
+	>
+		<div class="poster-moon" set:html={inkMoon} />
+	</div>
+)}
+		{theme.clouds && (
+	<>
+		<div class="poster-cloud poster-cloud-left"></div>
+		<div class="poster-cloud poster-cloud-moon"></div>
+	</>
+)}
+		{theme.stars &&
+	stars.map((star) => (
+		<span
+			class:list={["poster-star", star.large && "poster-star-large"]}
+			style={`left: ${star.x}%; top: ${star.y}%;`}
+		/>
+	))}
+	</div>
+
+	<div class="poster-body">
+		<p class="poster-eyebrow">You're invited to</p>
+
+		<h1
+			class:list={["poster-title", title_art ? "poster-title-art" : "poster-title-text"]}
+		>
+			{title_art ? <TitleArt name={title_art} label={title} variant="print" /> : title}
+		</h1>
+
+		{subtitle && <p class="poster-subtitle">{subtitle}</p>}
+
+		<hr class="poster-rule">
+
+		<ul class="poster-details">
+			<li class="poster-detail">
+				<Calendar size={24} class="poster-icon" aria-hidden="true" />
+				<span>{date}</span>
+			</li>
+			<li class="poster-detail">
+				<Clock size={24} class="poster-icon" aria-hidden="true" />
+				<span>{time}</span>
+			</li>
+			<li class="poster-detail">
+				<MapPin size={24} class="poster-icon" aria-hidden="true" />
+				<span>{location}</span>
+			</li>
+		</ul>
+
+		{side_activity && (
+	<div class="poster-side">
+		<div class="poster-side-head">
+			<p class="poster-side-label">
+				<Dices size={20} class="poster-side-icon" aria-hidden="true" />
+				<span>Bonus round</span>
+			</p>
+			<p class="poster-side-time">{side_activity.time}</p>
+		</div>
+		<p class="poster-side-question">
+			{side_activity.blurb ?? side_activity.question}
+		</p>
+	</div>
+)}
+
+		<div class="poster-footer">
+			<div class="poster-rsvp">
+				<p class="poster-rsvp-label">RSVP by</p>
+				<p class="poster-rsvp-date">{rsvp_by}</p>
+			</div>
+
+			<div class="poster-qr">
+				<div
+					class="poster-qr-code"
+					role="img"
+					aria-label={qrAlt}
+					set:html={qrSvg}
+				/>
+				<p class="poster-qr-caption">Scan to RSVP</p>
+			</div>
+		</div>
+	</div>
+
+	{/* The runner himself, idle on the ground line in the bottom-left corner —
+	   the hero's resting pose, holding his board. Only the runner themes have
+	   him, and he is the one piece of artwork that keeps its own palette rather
+	   than taking the poster's ink: he is the character from the hero, and a
+	   silhouette of a sprite this small would lose the glasses, the board and
+	   the pose that make him recognisable. */}
+	{theme.runner && (
+	<img
+		src="/runner/player/idle-0.png"
+		alt=""
+		class="poster-character"
+		aria-hidden="true"
+	/>
+)}
+
+	{/* The game ground, reduced to its two readable parts: the solid ground
+	   line and the stratified dirt dashes below it. The texture is the same
+	   list the hero's canvas blits (see `src/lib/runner-ground.ts`), so the
+	   card's ground is literally the hero's ground. It belongs to the runner
+	   themes only; a theme without a runner has no ground to continue. */}
+	{theme.runner && (
+	<div
+		class="poster-ground"
+		style={`--ground-texture: ${groundTexture};`}
+		aria-hidden="true"
+	></div>
+)}
+</div>
+
+<style>
+.poster {
+	/* `container-type: size` turns the card into the query container every cqw
+	   below resolves against. The aspect ratio fixes both axes, so size
+	   containment has nothing to disagree with. */
+	container-type: size;
+	position: relative;
+	isolation: isolate;
+	width: 100%;
+	aspect-ratio: 5 / 7;
+	overflow: hidden;
+	/* No background, on purpose: the sheet is transparent so the paper shows
+	   through, and every colour on the card is `currentColor` off this. */
+	background: transparent;
+	color: var(--poster-ink, #1c1917);
+	font-family: var(--font-body);
+
+	/* Shared by the moon-cloud and by the mask that cuts the moon out beneath
+	   it (see `.poster-moon-corner-clouded`). One set of numbers, so the hole in
+	   the moon always lands exactly where the cloud is painted. */
+	--cloud-moon-left: 77.5cqw;
+	--cloud-moon-top: 8cqw;
+	--cloud-moon-width: 12.5cqw;
+	line-height: 1.2;
+	-webkit-print-color-adjust: exact;
+	print-color-adjust: exact;
+}
+
+/* Exactly one sheet when it comes off the printer. `aspect-ratio` alone lands
+   on 7in from a 5in width, but a fractional-pixel difference at that size can
+   spill onto a second page, so print states both axes outright. */
+@media print {
+	.poster {
+		width: 5in;
+		height: 7in;
+		aspect-ratio: auto;
+	}
+}
+
+.poster-sky {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+}
+
+.poster-cloud {
+	position: absolute;
+	aspect-ratio: 30 / 13;
+	background-color: currentColor;
+	opacity: 0.2;
+	/* The art is a mask, not an image: only the cloud's silhouette survives,
+	   and `currentColor` paints it. */
+	-webkit-mask: url("/clouds/cloud-small.svg") center / contain no-repeat;
+	mask: url("/clouds/cloud-small.svg") center / contain no-repeat;
+}
+.poster-cloud-left {
+	left: 4%;
+	top: 3%;
+	width: 19cqw;
+}
+
+/* A small cloud drifting across the moon's left rim. It is painted after the
+   moon, so it sits in front of the rim the way a cloud passes in front of the
+   disc; at a fraction of the rim's ink it darkens it just enough to read as
+   overlap rather than as a second moon. */
+.poster-cloud-moon {
+	left: var(--cloud-moon-left);
+	top: var(--cloud-moon-top);
+	width: var(--cloud-moon-width);
+	opacity: 0.18;
+}
+
+/* Top-right corner, the hero's own moon position. The disc is corner-pinned
+   like the sky's, and its face is the paper: only the rim and the crags carry
+   ink, so the disc never becomes an opaque white coin on coloured stock. */
+.poster-moon {
+	position: absolute;
+	top: -4cqw;
+	right: -4cqw;
+	width: 21cqw;
+}
+
+/* The moon's wrapper is card-sized so the mask below can be positioned in the
+   card's own coordinates — the same ones the cloud uses — instead of in the
+   moon's little box. */
+.poster-moon-corner {
+	position: absolute;
+	inset: 0;
+}
+
+/* A cloud in front of the moon has to hide it, and print has no opaque paper
+   colour to paint over the disc with. So the moon is masked with the cloud's
+   filled footprint: wherever the cloud is, the rim is cut away, and the paper
+   shows through the cloud's own drawing. It reads as a cloud passing in front
+   of the disc, and nothing of the moon shows through it.
+   The cut uses `cloud-solid.svg` rather than the painted cloud's own art: the
+   outline cloud is hollow, so masking with it would erase the rim only where
+   its strokes fall and leave the rest of the disc visible through its middle.
+   `mask-composite: subtract` takes the second (solid) layer out of the first
+   (a full-card fill). */
+.poster-moon-corner-clouded {
+	mask-image: linear-gradient(#000, #000), url("/clouds/cloud-solid.svg");
+	mask-repeat: no-repeat, no-repeat;
+	mask-position:
+		0 0,
+		var(--cloud-moon-left) var(--cloud-moon-top);
+	mask-size:
+		100% 100%,
+		var(--cloud-moon-width) auto;
+	mask-composite: subtract;
+}
+.poster-moon :global(svg) {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.poster-star {
+	position: absolute;
+	width: 0.6cqw;
+	height: 0.6cqw;
+	background-color: currentColor;
+	opacity: 0.55;
+	transform: translate(-50%, -50%);
+}
+.poster-star-large {
+	width: 0.85cqw;
+	height: 0.85cqw;
+	opacity: 0.45;
+}
+
+.poster-body {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	height: 100%;
+	padding: 5.5cqw 10cqw 11.5cqw;
+	text-align: center;
+}
+
+.poster-eyebrow {
+	margin: 0;
+	font-size: 3.8cqw;
+	line-height: 1;
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	opacity: 0.72;
+}
+
+.poster-title {
+	margin: 2.6cqw 0 0;
+	font-family: var(--font-heading);
+	font-size: 7cqw;
+	line-height: 1.05;
+	text-wrap: balance;
+}
+
+/* The lockup is sized by its width, since its height follows from the art's
+   aspect ratio. A text title instead runs to the card's margins and breaks on
+   its own balance, so the two need different containers. */
+.poster-title-art {
+	width: 31cqw;
+}
+
+.poster-title-text {
+	max-width: 82cqw;
+}
+
+.poster-subtitle {
+	margin: 2.2cqw 0 0;
+	font-size: 5.4cqw;
+	line-height: 1.1;
+}
+
+.poster-rule {
+	width: 12cqw;
+	margin: 3.2cqw 0 3cqw;
+	border: 0;
+	border-top: 0.45cqw solid currentColor;
+	opacity: 0.5;
+}
+
+/* An inline block, centred by the body's `align-items`, rather than a set of
+   individually centred rows: each row is a two-column grid whose first track is
+   the icon, so the icons line up and every value starts on the same axis. The
+   block as a whole stays centred, which keeps the inviting symmetry of the
+   hero while making the details scannable. */
+.poster-details {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 1.7cqw;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: 4.6cqw;
+	text-align: left;
+}
+
+.poster-detail {
+	display: grid;
+	grid-template-columns: 3.9cqw auto;
+	align-items: center;
+	gap: 1.8cqw;
+}
+
+.poster-icon {
+	width: 3.9cqw;
+	height: 3.9cqw;
+	flex: none;
+	opacity: 0.8;
+}
+
+.poster-side {
+	width: 100%;
+	max-width: 76cqw;
+	margin-top: 4.2cqw;
+	padding: 2cqw 3cqw 2.4cqw;
+	border: 0.4cqw solid currentColor;
+}
+
+/* Label and time share one line: the time is a qualifier on the activity, not
+   a second announcement, and the box has to give its height to the question. */
+.poster-side-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 2cqw;
+	margin-bottom: 1.4cqw;
+}
+
+.poster-side-label {
+	display: flex;
+	align-items: center;
+	gap: 1.2cqw;
+	margin: 0;
+	font-family: var(--font-heading);
+	font-size: 2.2cqw;
+	letter-spacing: 0.08em;
+	white-space: nowrap;
+	text-transform: uppercase;
+	text-align: left;
+}
+
+.poster-side-icon {
+	width: 3.4cqw;
+	height: 3.4cqw;
+	flex: none;
+}
+
+.poster-side-question {
+	margin: 0;
+	font-size: 4.2cqw;
+	line-height: 1.15;
+	text-wrap: balance;
+}
+
+.poster-side-time {
+	margin: 0;
+	font-size: 3.6cqw;
+	line-height: 1.15;
+	white-space: nowrap;
+	opacity: 0.75;
+}
+
+/* `margin-top: auto` seats the footer on the bottom of the content box, just
+   above the ground band, so the gap left by the fixed elements above
+   collects between the D&D box and this row rather than below it. */
+.poster-footer {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	/* Top-aligned, not centred: the QR block is the tall column, and centring
+	   the much shorter RSVP block against it would push the RSVP deadline down
+	   into the corner the character stands in. */
+	align-items: start;
+	gap: 4cqw;
+	width: 100%;
+	margin-top: auto;
+	text-align: left;
+}
+
+.poster-rsvp-label {
+	margin: 0;
+	font-family: var(--font-heading);
+	font-size: 2.5cqw;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.poster-rsvp-date {
+	margin: 1.2cqw 0 0;
+	font-size: 5.2cqw;
+	line-height: 1.05;
+}
+
+.poster-qr {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1cqw;
+}
+
+/* The QR is vector, so it prints at the printer's own resolution. Its quiet
+   zone and light modules are transparent — the paper is what scanners read
+   the dark modules against. */
+.poster-qr-code {
+	width: 22cqw;
+}
+.poster-qr-code :global(svg) {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.poster-qr-caption {
+	margin: 0;
+	font-family: var(--font-heading);
+	font-size: 2.2cqw;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	opacity: 0.75;
+}
+
+/* Feet on the ground line. `8cqw` is the ground band's height, which puts the
+   file's bottom edge on the line — but the file's lowest pixels are the tail of
+   the skateboard he is holding, and the shoes end 12 of the sprite's 267 rows
+   above that. The art is nudged down past those 12 rows, so the soles land on
+   the line and the board's tail comes to rest on its top edge; both are knocked
+   out by about a pixel against the line's own 2.4px, which is invisible. His
+   top still clears the bottom of the RSVP block above him. */
+.poster-character {
+	position: absolute;
+	left: 10cqw;
+	bottom: calc(8cqw - 0.75cqw);
+	height: 12cqw;
+	width: auto;
+	z-index: 2;
+	pointer-events: none;
+	image-rendering: pixelated;
+}
+
+.poster-ground {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 0;
+	height: 8cqw;
+	border-top: 0.5cqw solid currentColor;
+	background-image: var(--ground-texture);
+	background-size: 10cqw 5cqw;
+	background-repeat: repeat;
+	opacity: 0.9;
+}
+</style>

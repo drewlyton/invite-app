@@ -1,0 +1,227 @@
+---
+import { getEntry } from "astro:content";
+import { renderSVG } from "uqr";
+import PrintPoster from "../../../components/PrintPoster.astro";
+import Layout from "../../../layouts/Layout.astro";
+import { resolvePrintInk, resolveTheme } from "../../../lib/themes";
+
+// Rendered per request, not prerendered, so the event is read from the live
+// content store rather than baked at build time.
+const { eventId } = Astro.params;
+const event = await getEntry("event", eventId ?? "");
+
+if (!event) {
+	return new Response("Event not found", {
+		status: 404,
+		headers: { "Content-Type": "text/plain; charset=utf-8" },
+	});
+}
+
+const theme = resolveTheme(event.data.theme);
+const ink = resolvePrintInk(theme);
+
+// The QR has to keep working when the sheet is printed from a dev server, a
+// preview, or a tailnet hostname, so it encodes the canonical site from
+// `astro.config.mjs` rather than the request's own origin. `PUBLIC_SITE_URL`
+// overrides that for the rare build that serves somewhere else.
+const origin = (
+	import.meta.env.PUBLIC_SITE_URL ??
+	Astro.site ??
+	Astro.url.origin
+)
+	.toString()
+	.replace(/\/$/, "");
+const inviteUrl = `${origin}/events/${event.id}`;
+
+// `uqr` emits a plain SVG document with a viewBox, which is what the poster
+// wants: vector modules keep the code crisp at whatever dpi the printer runs,
+// and a transparent light colour lets the paper form the code's light squares.
+// ECC `M` (15% recovery) is the sane middle for a cleanly printed code; the
+// four-module quiet zone is the spec's minimum, and it costs nothing here
+// because it is transparent too.
+const qrSvg = renderSVG(inviteUrl, {
+	ecc: "M",
+	border: 4,
+	blackColor: ink,
+	whiteColor: "transparent",
+});
+
+const themeStyle = `--font-heading: ${theme.fonts.heading}; --font-body: ${theme.fonts.body}; --color-accent: ${theme.accent}; --poster-ink: ${ink};`;
+---
+
+<Layout pageTitle={`${event.data.title} — Print`}>
+	<div class="print-page" style={themeStyle} data-theme={theme.id}>
+		<div class="print-chrome">
+			<div>
+				<p class="print-chrome-title">Printable invite</p>
+				<p class="print-chrome-hint">
+					5 × 7 in, one sheet, no background: the paper is the background. In
+					the print dialog choose a 5 × 7 in paper size, no margins, 100% scale.
+				</p>
+			</div>
+			<div class="print-chrome-actions">
+				<a class="print-chrome-link" href={`/events/${event.id}`}>
+					Back to invite
+				</a>
+				<button class="print-chrome-button" type="button" data-print>
+					Print
+				</button>
+			</div>
+		</div>
+
+		<div class="print-sheet">
+			<PrintPoster
+				event={event}
+				theme={theme}
+				qrSvg={qrSvg}
+				qrAlt={`QR code linking to the invitation at ${inviteUrl}`}
+			/>
+		</div>
+	</div>
+</Layout>
+
+<script>
+document
+	.querySelector("[data-print]")
+	?.addEventListener("click", () => window.print());
+</script>
+
+<style is:global>
+/* A 5 × 7 in sheet with no margins. `@page` is document-wide by nature, which
+   is fine here: this route is its own document, and the event page keeps its
+   normal printer defaults. */
+@page {
+	size: 5in 7in;
+	margin: 0;
+}
+
+.print-page {
+	min-height: 100svh;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1.75rem;
+	padding: 1.5rem 1rem 3rem;
+	font-family: var(--font-body);
+	color: #1c1917;
+	/* A checkerboard, so the preview itself shows that the card has no fill —
+	   what you see behind the ink is the paper, not the page. */
+	background-color: #e7e5e4;
+	background-image:
+		linear-gradient(
+			45deg,
+			#dddad7 25%,
+			transparent 25%,
+			transparent 75%,
+			#dddad7 75%
+		),
+		linear-gradient(
+			45deg,
+			#dddad7 25%,
+			transparent 25%,
+			transparent 75%,
+			#dddad7 75%
+		);
+	background-size: 28px 28px;
+	background-position:
+		0 0,
+		14px 14px;
+}
+
+.print-chrome {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	width: min(5in, 100%);
+}
+
+.print-chrome-title {
+	margin: 0;
+	font-family: var(--font-heading);
+	font-size: 0.6875rem;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.print-chrome-hint {
+	max-width: 40ch;
+	margin: 0.35rem 0 0;
+	font-size: 1.125rem;
+	line-height: 1.25;
+	opacity: 0.75;
+}
+
+.print-chrome-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.print-chrome-link {
+	font-size: 1.125rem;
+	text-underline-offset: 3px;
+	opacity: 0.75;
+}
+.print-chrome-link:hover {
+	opacity: 1;
+}
+
+.print-chrome-button {
+	min-height: 2.75rem;
+	padding: 0 1.25rem;
+	border: 2px solid currentColor;
+	background: transparent;
+	font-family: var(--font-heading);
+	font-size: 0.6875rem;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	cursor: pointer;
+}
+.print-chrome-button:hover {
+	background: currentColor;
+	color: #e7e5e4;
+}
+
+/* The sheet is the sizing authority: it is the fixed 5in frame the poster fills,
+   and it is also what carries the preview shadow. The poster itself only knows
+   how to fill whatever width it is given. */
+.print-sheet {
+	width: min(5in, 100%);
+}
+
+/* The shadow belongs to the preview only: it is what makes the transparent card
+   read as a sheet lying on a surface. Paper needs no such cue. */
+@media screen {
+	.print-sheet {
+		box-shadow:
+			0 0 0 1px rgb(28 25 23 / 0.08),
+			0 18px 40px -18px rgb(28 25 23 / 0.45);
+	}
+}
+
+@media print {
+	/* Everything that is chrome or preview disappears; the sheet keeps the
+	   page's whole area, and nothing in the document paints a background. */
+	html,
+	body {
+		background: transparent;
+	}
+
+	.print-page {
+		display: block;
+		min-height: 0;
+		padding: 0;
+		background: none;
+	}
+
+	.print-chrome {
+		display: none;
+	}
+
+	.print-sheet {
+		box-shadow: none;
+	}
+}
+</style>
